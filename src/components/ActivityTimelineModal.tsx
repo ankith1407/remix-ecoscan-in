@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { DbUserActivity } from '../types';
+import { useI18n } from '../i18n';
 
 interface ActivityTimelineModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export const ActivityTimelineModal: React.FC<ActivityTimelineModalProps> = ({
   activities,
   onSelectPickup,
 }) => {
+  const { t } = useI18n();
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'PICKUP' | 'SCAN' | 'CREDIT' | 'REWARD'>('ALL');
 
   if (!isOpen) return null;
@@ -101,7 +103,7 @@ export const ActivityTimelineModal: React.FC<ActivityTimelineModalProps> = ({
               <span className="material-symbols-outlined text-[22px]">history</span>
             </div>
             <div>
-              <h3 className="font-bold text-white text-base leading-tight">User Activity Timeline</h3>
+              <h3 className="font-bold text-white text-base leading-tight">{t('userActivity')}</h3>
               <p className="text-xs text-emerald-300 font-medium">
                 {activities.length} total activity log entries recorded
               </p>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { DbPickupItem } from '../types';
+import { useI18n } from '../i18n';
 
 interface PickupDetailModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export const PickupDetailModal: React.FC<PickupDetailModalProps> = ({
   pickup,
   onOpenLiveTracking,
 }) => {
+  const { t } = useI18n();
   if (!isOpen || !pickup) return null;
 
   const steps = [
@@ -56,7 +58,7 @@ export const PickupDetailModal: React.FC<PickupDetailModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-[#FFFFFF] text-base">Pickup Details</h3>
+                <h3 className="font-bold text-[#FFFFFF] text-base">{t('pickupDetails')}</h3>
                 <span className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-white/80">
                   #{pickup.id.substring(0, 8)}
                 </span>
@@ -92,7 +94,7 @@ export const PickupDetailModal: React.FC<PickupDetailModalProps> = ({
 
             {pickup.otp && !isCancelled && pickup.status !== 'COMPLETED' && (
               <div className="bg-white px-3 py-2 rounded-xl border border-[#3FA66B]/30 text-center shadow-xs">
-                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block">Doorstep OTP</span>
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block">{t('doorstepOtp')}</span>
                 <span className="text-lg font-mono font-bold tracking-widest text-[#3FA66B]">{pickup.otp}</span>
               </div>
             )}
@@ -115,7 +117,7 @@ export const PickupDetailModal: React.FC<PickupDetailModalProps> = ({
           {/* Key Overview Cards */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Weight</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">{t('weight')}</span>
               <div className="text-sm font-bold text-[#172019]">
                 {pickup.actual_weight ? `${pickup.actual_weight} kg (Verified)` : `${pickup.estimated_weight} kg (Est.)`}
               </div>

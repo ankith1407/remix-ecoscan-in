@@ -1,4 +1,4 @@
-33import fs from 'fs';
+import fs from 'fs';
 import path from 'path';
 import { rewardProvider } from './rewardProvider';
 
@@ -10,12 +10,13 @@ export interface DbUser {
   profile_image: string;
   role: 'user' | 'collector' | 'admin';
   address: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   eco_credits: number;
   total_waste_recycled: number;
   total_earnings: number;
   created_at: string;
+  password_hash?: string;
 }
 
 export interface DbWasteScan {
@@ -1141,12 +1142,14 @@ export class Database {
   // --- Pickup Live Location Tracking ---
   getPickupLocation(pickupId: string): DbPickupLocation | undefined {
     if (!this.data.pickup_locations) this.data.pickup_locations = [];
-    return this.data.pickup_locations.find((l) => l.pickup_id === pickupId && l.tracking_active);
+    return [...this.data.pickup_locations]
+      .reverse()
+      .find((l) => l.pickup_id === pickupId && l.tracking_active);
   }
 
   getPickupLocationRaw(pickupId: string): DbPickupLocation | undefined {
     if (!this.data.pickup_locations) this.data.pickup_locations = [];
-    return this.data.pickup_locations.find((l) => l.pickup_id === pickupId);
+    return [...this.data.pickup_locations].reverse().find((l) => l.pickup_id === pickupId);
   }
 
   updatePickupLocation(data: {
@@ -1571,6 +1574,10 @@ export class Database {
     });
   }
 
+  getNotificationById(id: string): DbNotification | undefined {
+    return this.data.notifications?.find((notification) => notification.id === id);
+  }
+
   addNotification(notif: DbNotification): DbNotification {
     if (!this.data.notifications) this.data.notifications = [];
     if (!notif.recipient_id) notif.recipient_id = notif.user_id;
@@ -1740,6 +1747,7 @@ export class Database {
     const pickup = this.getPickupById(pickupId);
     if (!pickup) return null;
 
+    pickup.status = 'CANCELLED';
     pickup.cancelled_by = cancelledBy;
     pickup.cancelled_reason = reason || 'Cancelled';
     pickup.cancelled_at = new Date().toISOString();

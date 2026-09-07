@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DbCollectorItem, DbPickupItem } from '../types';
 import { api } from '../services/api';
+import { useI18n } from '../i18n';
 
 interface CollectorDashboardProps {
   collector?: DbCollectorItem | null;
@@ -13,6 +14,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   onRefresh,
   onSwitchRole,
 }) => {
+  const { t } = useI18n();
   const [collector, setCollector] = useState<DbCollectorItem | null>(initialCollector || null);
   const [pickups, setPickups] = useState<DbPickupItem[]>([]);
   const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'history'>('requests');
@@ -42,14 +44,18 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
     time: string;
   } | null>(null);
   const [locationStatusMessage, setLocationStatusMessage] = useState<string | null>(null);
-  const trackingIntervalRef = React.useRef<any>(null);
+  const trackingWatchRef = React.useRef<number | null>(null);
+
+  const clearLocationWatch = () => {
+    if (trackingWatchRef.current !== null) {
+      navigator.geolocation?.clearWatch(trackingWatchRef.current);
+      trackingWatchRef.current = null;
+    }
+  };
 
   // Stop tracking and inform server
   const stopLiveTracking = async (pickupId?: string) => {
-    if (trackingIntervalRef.current) {
-      clearInterval(trackingIntervalRef.current);
-      trackingIntervalRef.current = null;
-    }
+    clearLocationWatch();
     const idToStop = pickupId || activeTrackingPickupId;
     if (idToStop) {
       try {
@@ -66,56 +72,54 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   // Cleanup on unmount - ensure no background GPS tracking
   useEffect(() => {
     return () => {
-      if (trackingIntervalRef.current) {
-        clearInterval(trackingIntervalRef.current);
-      }
+      clearLocationWatch();
     };
   }, []);
 
-  const sendLocationUpdate = (pickupId: string) => {
+  const sendLocationUpdate = async (pickupId: string, pos: GeolocationPosition) => {
+    try {
+      const collectorId = collector?.id;
+      if (!collectorId) throw new Error('Collector account is unavailable.');
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      await api.updateCollectorLocation(pickupId, {
+        collector_id: collectorId,
+        latitude: lat,
+        longitude: lng,
+        tracking_active: true,
+      });
+      setLastLocationCoords({
+        lat,
+        lng,
+        time: new Date().toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+      });
+      setLocationStatusMessage(null);
+    } catch (err: any) {
+      console.warn('Location update sync error:', err);
+      setLocationStatusMessage('Location sync temporary issue. Retrying...');
+    }
+  };
+
+  const startLocationWatch = (pickupId: string) => {
     if (!navigator.geolocation) {
       setLocationStatusMessage('GPS is unavailable on this device/browser.');
       return;
     }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          await api.updateCollectorLocation(pickupId, {
-            collector_id: collector?.id || 'col-1',
-            latitude: lat,
-            longitude: lng,
-            tracking_active: true,
-          });
-          setLastLocationCoords({
-            lat,
-            lng,
-            time: new Date().toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-            }),
-          });
-          setLocationStatusMessage(null);
-        } catch (err: any) {
-          console.warn('Location update sync error:', err);
-          setLocationStatusMessage('Location sync temporary issue. Retrying...');
-        }
-      },
+    clearLocationWatch();
+    trackingWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => void sendLocationUpdate(pickupId, position),
       (err) => {
         let msg = 'Collector location is currently unavailable.';
-        if (err.code === err.PERMISSION_DENIED) {
-          msg = 'Location permission denied. Please allow GPS access.';
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
-          msg = 'GPS signal currently unavailable.';
-        } else if (err.code === err.TIMEOUT) {
-          msg = 'GPS signal request timed out.';
-        }
+        if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Please allow GPS access.';
+        else if (err.code === err.POSITION_UNAVAILABLE) msg = 'GPS signal currently unavailable.';
+        else if (err.code === err.TIMEOUT) msg = 'GPS signal request timed out.';
         setLocationStatusMessage(msg);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
@@ -139,7 +143,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 10000,
+          maximumAge: 0,
         });
       }).catch((err) => {
         let msg = 'Location permission is required to start trip.';
@@ -178,11 +182,8 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       });
 
-      // 4. Periodic location update every 15 seconds
-      if (trackingIntervalRef.current) clearInterval(trackingIntervalRef.current);
-      trackingIntervalRef.current = setInterval(() => {
-        sendLocationUpdate(pickupId);
-      }, 15000);
+      // 4. Continue receiving fresh browser GPS fixes throughout the trip.
+      startLocationWatch(pickupId);
     } catch (err: any) {
       const errMsg = err.message || 'Failed to start trip';
       setTripStartErrors((prev) => ({ ...prev, [pickupId]: errMsg }));
@@ -201,11 +202,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
       setIsSharingLocation(true);
       setActiveTrackingPickupId(pickupId);
       setLocationStatusMessage('Resuming GPS sharing...');
-      sendLocationUpdate(pickupId);
-      if (trackingIntervalRef.current) clearInterval(trackingIntervalRef.current);
-      trackingIntervalRef.current = setInterval(() => {
-        sendLocationUpdate(pickupId);
-      }, 15000);
+      startLocationWatch(pickupId);
     }
   };
 
@@ -320,6 +317,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const handleCompletePickup = async (pickupId: string) => {
     try {
       setActionLoading(pickupId);
+      await stopLiveTracking(pickupId);
       const res = await api.completePickup(pickupId, paymentMethod);
       setCompletingPickupId(null);
       setCompletionNotice(
@@ -699,7 +697,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           className="w-full py-2.5 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95 disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-[18px]">near_me</span>
-                          {actionLoading === pickup.id ? 'Starting Trip & Requesting GPS...' : 'Share Location / Start Trip'}
+                          {actionLoading === pickup.id ? `${t('startTrip')}...` : `${t('startTrip')} / GPS`}
                         </button>
                         {tripStartErrors[pickup.id] && (
                           <div className="p-2.5 rounded-lg bg-[#FEE2E2] border border-[#FCA5A5] text-xs text-[#DC2626] font-semibold flex items-center gap-1.5">
@@ -725,7 +723,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                                 <span className="h-2.5 w-2.5 rounded-full bg-[#65736A]"></span>
                               )}
                               <span className="text-xs font-bold text-[#172019]">
-                                {isSharingLocation ? 'Live GPS Sharing Active' : 'Location Sharing Paused'}
+                                {isSharingLocation ? t('trackingActive') : t('trackingStopped')}
                               </span>
                             </div>
                             <button
@@ -733,7 +731,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                               type="button"
                               className="text-[11px] font-bold px-2 py-0.5 rounded border border-[#DCE5DE] bg-[#FFFFFF] text-[#172019] hover:bg-[#F5F8F4]"
                             >
-                              {isSharingLocation ? 'Stop Sharing' : 'Resume Sharing'}
+                              {isSharingLocation ? t('pauseSharing') : t('resumeSharing')}
                             </button>
                           </div>
 
@@ -931,7 +929,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           className="w-full mt-1 py-2.5 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <span className="material-symbols-outlined text-[18px]">verified</span>
-                          Complete Pickup & Settle Payment
+                          {t('completePickup')} & Settle Payment
                         </button>
 
                         <p className="text-[10px] text-center text-[#65736A]">

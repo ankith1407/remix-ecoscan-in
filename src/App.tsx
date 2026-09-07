@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   ScreenType,
-  Language,
   ScrapRate,
   UserEcoProfile,
   ImpactMetrics,
@@ -53,8 +52,10 @@ import { PickupConfirmationModal } from './components/PickupConfirmationModal';
 import { PickupReceiptModal } from './components/PickupReceiptModal';
 import { RatingModal } from './components/RatingModal';
 import { DbNotification, DbUserActivity, DbPickupItem } from './types';
+import { useI18n } from './i18n';
 
 export default function App() {
+  const { language, setLanguage, t } = useI18n();
   // Authentication screen flow: 'welcome' | 'login' | 'register' | 'authenticated'
   const [authScreen, setAuthScreen] = useState<'welcome' | 'login' | 'register' | 'authenticated'>(() => {
     try {
@@ -128,7 +129,14 @@ export default function App() {
     } catch {}
   }, [activeRole]);
 
-  const [language, setLanguage] = useState<Language>('EN');
+  useEffect(() => {
+    if (authScreen !== 'authenticated') return;
+    api.getCurrentUser().catch(() => {
+      setAuthScreen('welcome');
+      setActiveRole('user');
+      localStorage.removeItem('ecoscan_auth_screen');
+    });
+  }, [authScreen]);
 
   // Core interactive states
   const [rates, setRates] = useState<ScrapRate[]>(INITIAL_SCRAP_RATES);
@@ -239,14 +247,14 @@ export default function App() {
             const isCompleted = p.status === 'COMPLETED';
             const isCancelled = p.status === 'CANCELLED' || p.status === 'REJECTED' || p.status === 'FAILED';
 
-            let statusText = 'CONFIRMED • EN ROUTE';
-            if (p.status === 'COMPLETED') statusText = 'COMPLETED ✓';
-            else if (p.status === 'CANCELLED') statusText = 'CANCELLED ✕';
-            else if (p.status === 'COLLECTOR_ON_THE_WAY' || p.status === 'ON_THE_WAY') statusText = 'COLLECTOR ON THE WAY';
-            else if (p.status === 'ARRIVED') statusText = 'COLLECTOR ARRIVED';
-            else if (p.status === 'WEIGHED' || p.status === 'WEIGHT_VERIFIED') statusText = 'WEIGHT VERIFIED';
-            else if (p.status === 'REQUESTED') statusText = 'REQUEST SUBMITTED';
-            else if (p.status === 'ACCEPTED') statusText = 'COLLECTOR ACCEPTED';
+            let statusText = `${t('pickupStatus')} • EN ROUTE`;
+            if (p.status === 'COMPLETED') statusText = `${t('completed')} ✓`;
+            else if (p.status === 'CANCELLED') statusText = `${t('cancelled')} ✕`;
+            else if (p.status === 'COLLECTOR_ON_THE_WAY' || p.status === 'ON_THE_WAY') statusText = t('collectorOnWay');
+            else if (p.status === 'ARRIVED') statusText = t('collectorArrived');
+            else if (p.status === 'WEIGHED' || p.status === 'WEIGHT_VERIFIED') statusText = t('weightVerified');
+            else if (p.status === 'REQUESTED') statusText = t('requestSubmitted');
+            else if (p.status === 'ACCEPTED') statusText = t('collectorAccepted');
 
             return {
               id: p.id,
@@ -279,7 +287,7 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [activeUserId, authScreen]);
+  }, [activeUserId, authScreen, language, t]);
 
   const handleMarkNotificationRead = async (notifId: string) => {
     try {
@@ -370,7 +378,7 @@ export default function App() {
   };
 
   const handleToggleLanguage = () => {
-    setLanguage((prev) => (prev === 'EN' ? 'HI' : 'EN'));
+    setLanguage(language === 'EN' ? 'HI' : language === 'HI' ? 'TE' : 'EN');
   };
 
   // Helper to load user-specific dataset or initialize fresh/demo data
@@ -423,6 +431,8 @@ export default function App() {
 
   const handleLoginSuccess = (user: AuthUser) => {
     loadUserDataForUser(user);
+    setActiveRole(user.role || 'user');
+    setCurrentScreen('dashboard');
 
     // Ensure user is in savedUsers
     setSavedUsers((prev) => {
@@ -474,6 +484,7 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    void api.logout();
     setAuthScreen('welcome');
     showToast('Signed out of EcoScan IN');
   };
@@ -560,26 +571,13 @@ export default function App() {
     // Fetch backend item details to show Confirmation Modal
     try {
       const remotePickups = await api.getPickups({ userId: activeUserId }).catch(() => []);
-      const found = remotePickups.find((p) => p.id === newPickup.id) || {
-        id: newPickup.id,
-        user_id: activeUserId,
-        user_name: userProfile.name,
-        user_phone: userProfile.phoneNumber || '+91 98450 12345',
-        waste_category: 'Dry Recyclables',
-        items_summary: newPickup.itemsSummary,
-        estimated_weight: 10,
-        estimated_value: 300,
-        pickup_address: 'Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru',
-        latitude: 12.9716,
-        longitude: 77.6412,
-        preferred_date: newPickup.dateTimeSlot,
-        preferred_time: '10:30 AM',
-        status: 'REQUESTED' as const,
-        otp: newPickup.otp,
-        created_at: new Date().toISOString(),
-      };
-      setCreatedPickupForConfirmation(found);
-      setIsConfirmationModalOpen(true);
+      const found = remotePickups.find((p) => p.id === newPickup.id);
+      if (found) {
+        setCreatedPickupForConfirmation(found);
+        setIsConfirmationModalOpen(true);
+      } else {
+        showToast('Pickup was created, but confirmation details are still loading.');
+      }
     } catch {
       showToast(`Doorstep Pickup Booked! ID: ${newPickup.id} (OTP: ${newPickup.otp})`);
     }
@@ -653,6 +651,7 @@ export default function App() {
         activeRole={activeRole}
         unreadNotificationCount={notifications.filter((n) => !n.is_read && !n.read).length}
         onToggleLanguage={handleToggleLanguage}
+        onChangeLanguage={setLanguage}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
         onSwitchRole={(role) => {
@@ -703,6 +702,7 @@ export default function App() {
                 rates={rates}
                 facilities={facilities}
                 pickups={pickups}
+                userId={activeUserId}
                 onOpenScheduleModal={handleOpenScheduleModal}
                 onCancelPickup={handleCancelPickup}
                 onSelectPickup={handleSelectPickupForInspector}
@@ -822,6 +822,7 @@ export default function App() {
         preselectedItemName={prefilledPickupDetails?.itemName}
         preselectedWeightKg={prefilledPickupDetails?.weightKg}
         preselectedPayout={prefilledPickupDetails?.payout}
+        userId={activeUserId}
       />
 
       <PartnerDashboardModal

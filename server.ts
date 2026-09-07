@@ -1,8 +1,11 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { db, DbPickupRequest, DbPayment, DbEcoTransaction, PickupStatus, RecipientRole } from './server/db';
+import { db, DbUser, DbPickupRequest, DbPayment, DbEcoTransaction, PickupStatus, RecipientRole } from './server/db';
 import { analyzeWasteImage, askEcoAiChat } from './server/gemini';
 import {
   hashPassword,
@@ -19,9 +22,60 @@ dotenv.config();
 const app = express();
 const DEFAULT_PORT = Number(process.env.PORT) || 3000;
 
-// Parse JSON with 50MB limit for camera / image base64 payloads
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+function sanitizeUser(user: DbUser) {
+  const { password_hash: _passwordHash, ...safeUser } = user;
+  return safeUser;
+}
+
+function setAuthCookies(res: express.Response, tokens: { accessToken: string; refreshToken: string }) {
+  const secure = process.env.NODE_ENV === 'production';
+  const options = { httpOnly: true, sameSite: 'lax' as const, secure, path: '/' };
+  res.cookie('accessToken', tokens.accessToken, { ...options, maxAge: 15 * 60 * 1000 });
+  res.cookie('refreshToken', tokens.refreshToken, { ...options, maxAge: 7 * 24 * 60 * 60 * 1000 });
+}
+
+function isAdmin(req: AuthenticatedRequest): boolean {
+  return req.user?.role === 'admin';
+}
+
+function ownsUser(req: AuthenticatedRequest, userId: string): boolean {
+  return Boolean(req.user && (isAdmin(req) || req.user.id === userId));
+}
+
+function collectorOwnsPickup(req: AuthenticatedRequest, pickup: DbPickupRequest): boolean {
+  if (isAdmin(req)) return true;
+  if (req.user?.role !== 'collector' || !pickup.collector_id) return false;
+  const collector = db.getCollectorById(pickup.collector_id);
+  return collector?.user_id === req.user.id;
+}
+
+app.disable('x-powered-by');
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigin = process.env.CORS_ORIGIN;
+  if (origin && allowedOrigin && origin !== allowedOrigin) {
+    return res.status(403).json({ error: 'Origin is not allowed' });
+  }
+  if (allowedOrigin) res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  res.setHeader('Vary', 'Origin');
+  next();
+});
+
+// Keep JSON/image payloads bounded; the scanner should send a compressed image.
+app.use(express.json({ limit: '10mb', strict: true }));
+app.use(express.urlencoded({ extended: false, limit: '1mb', parameterLimit: 100 }));
+app.use(cookieParser());
+
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
+const aiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
+const otpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false });
 
 // ----------------------------------------------------
 // 1. Health check
@@ -36,12 +90,25 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Every API route is authenticated by default. Only account bootstrap and
+// read-only public catalogs remain public; resource ownership is checked below.
+app.use('/api', (req, res, next) => {
+  const publicRoute =
+    (req.path === '/auth/login' && req.method === 'POST') ||
+    (req.path === '/auth/register' && req.method === 'POST') ||
+    (req.path === '/auth/logout' && req.method === 'POST') ||
+    (req.path === '/materials' && req.method === 'GET') ||
+    (req.path === '/rewards' && req.method === 'GET');
+  if (publicRoute) return next();
+  return requireAuth(req as AuthenticatedRequest, res, next);
+});
+
 // ----------------------------------------------------
 // 2. JWT Production Authentication API
 // ----------------------------------------------------
 
 // Register Endpoint
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { name, email, phone, password, role, address } = req.body;
     if (!name || !email) {
@@ -53,8 +120,12 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'An account with this email already exists.' });
     }
 
-    const passwordHash = password ? await hashPassword(password) : undefined;
-    const userRole = (role === 'collector' ? 'collector' : role === 'admin' ? 'admin' : 'user') as 'user' | 'collector' | 'admin';
+    if (typeof password !== 'string' || password.length < 12) {
+      return res.status(400).json({ error: 'A password of at least 12 characters is required' });
+    }
+    const passwordHash = await hashPassword(password);
+    // Public registration can only create a normal user. Privileged roles require admin assignment.
+    const userRole = 'user' as const;
 
     const newUser = {
       id: `usr_${Date.now()}`,
@@ -62,10 +133,9 @@ app.post('/api/auth/register', async (req, res) => {
       email,
       phone: phone || '+91 98000 00000',
       profile_image: '',
+      password_hash: passwordHash,
       role: userRole,
-      address: address || 'Indiranagar, Bengaluru, KA',
-      latitude: 12.9716,
-      longitude: 77.6412,
+      address: address || '',
       eco_credits: 50,
       total_waste_recycled: 0,
       total_earnings: 0,
@@ -74,28 +144,10 @@ app.post('/api/auth/register', async (req, res) => {
 
     db.saveUser(newUser);
 
-    if (userRole === 'collector') {
-      db.saveCollector({
-        id: `col_${Date.now()}`,
-        user_id: newUser.id,
-        name: newUser.name,
-        phone: newUser.phone,
-        verification_status: 'PENDING',
-        service_area: newUser.address,
-        latitude: 12.9716,
-        longitude: 77.6412,
-        available: true,
-        rating: 5.0,
-        total_pickups: 0,
-        total_earnings: 0,
-      });
-    }
-
     const tokens = generateTokens({ id: newUser.id, email: newUser.email, role: newUser.role });
+    setAuthCookies(res, tokens);
     res.status(201).json({
-      user: newUser,
-      token: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      user: sanitizeUser(newUser),
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Registration failed' });
@@ -103,9 +155,12 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Login Endpoint
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, phone, password } = req.body;
+    if (typeof password !== 'string' || password.length === 0) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
     const users = db.getUsers();
     let user = null;
 
@@ -115,36 +170,24 @@ app.post('/api/auth/login', async (req, res) => {
       user = users.find((u) => u.phone === phone);
     }
 
-    if (!user) {
-      // Create user fallback for seamless development testing
-      const newUser = {
-        id: `usr_${Date.now()}`,
-        name: email ? email.split('@')[0] : 'Citizen',
-        email: email || `user_${Date.now()}@ecoscan.in`,
-        phone: phone || '+91 98000 00000',
-        profile_image: '',
-        role: 'user' as const,
-        address: 'Indiranagar, Bengaluru, KA',
-        latitude: 12.9716,
-        longitude: 77.6412,
-        eco_credits: 100,
-        total_waste_recycled: 0,
-        total_earnings: 0,
-        created_at: new Date().toISOString(),
-      };
-      db.saveUser(newUser);
-      user = newUser;
+    if (!user || !user.password_hash || !(await verifyPassword(password, user.password_hash))) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const tokens = generateTokens({ id: user.id, email: user.email, role: user.role });
+    setAuthCookies(res, tokens);
     res.json({
-      user,
-      token: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      user: sanitizeUser(user),
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Login failed' });
   }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('accessToken', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+  res.clearCookie('refreshToken', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+  res.json({ status: 'ok' });
 });
 
 // Current User Profile Endpoint
@@ -152,46 +195,34 @@ app.get('/api/auth/me', requireAuth, (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   const user = db.getUserById(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json(user);
+  res.json(sanitizeUser(user));
 });
 
 // Multi-Address Management API
 app.get('/api/users/:id/addresses', (req, res) => {
+  if (!ownsUser(req as AuthenticatedRequest, req.params.id)) return res.status(403).json({ error: 'Forbidden' });
   const user = db.getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   // Default address list derived from user profile & seed addresses
-  const addresses = [
-    {
+  const addresses = user.address ? [{
       id: `addr_def_${user.id}`,
       userId: user.id,
       label: 'Home (Default)',
-      fullAddress: user.address || 'Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru',
-      pincode: '560038',
-      city: 'Bengaluru',
-      state: 'Karnataka',
+      fullAddress: user.address,
+      pincode: '',
+      city: '',
+      state: '',
       isDefault: true,
-      latitude: user.latitude || 12.9716,
-      longitude: user.longitude || 77.6412,
-    },
-    {
-      id: `addr_work_${user.id}`,
-      userId: user.id,
-      label: 'Office / Work',
-      fullAddress: 'EcoScan Tech Hub, 4th Floor, MG Road, Bengaluru',
-      pincode: '560001',
-      city: 'Bengaluru',
-      state: 'Karnataka',
-      isDefault: false,
-      latitude: 12.975,
-      longitude: 77.608,
-    },
-  ];
+      ...(user.latitude !== undefined ? { latitude: user.latitude } : {}),
+      ...(user.longitude !== undefined ? { longitude: user.longitude } : {}),
+    }] : [];
 
   res.json(addresses);
 });
 
 app.post('/api/users/:id/addresses', (req, res) => {
+  if (!ownsUser(req as AuthenticatedRequest, req.params.id)) return res.status(403).json({ error: 'Forbidden' });
   const { label, fullAddress, pincode, city, landmark } = req.body;
   if (!fullAddress) return res.status(400).json({ error: 'Full address is required' });
 
@@ -201,78 +232,30 @@ app.post('/api/users/:id/addresses', (req, res) => {
     label: label || 'Home',
     fullAddress,
     landmark: landmark || '',
-    pincode: pincode || '560038',
-    city: city || 'Bengaluru',
-    state: 'Karnataka',
+    pincode: pincode || '',
+    city: city || '',
+    state: '',
     isDefault: false,
-    latitude: 12.9716,
-    longitude: 77.6412,
   };
 
   res.status(201).json(newAddress);
 });
 
 app.post('/api/users/register', (req, res) => {
-  const { name, email, phone, role, address } = req.body;
-  if (!name || !email) {
-    return res.status(400).json({ error: 'Name and email are required' });
-  }
-
-  const existing = db.getUserByEmail(email);
-  if (existing) {
-    return res.json(existing);
-  }
-
-  const newUser = {
-    id: `usr_${Date.now()}`,
-    name,
-    email,
-    phone: phone || '+91 98000 00000',
-    profile_image: '',
-    role: (role === 'collector' ? 'collector' : role === 'admin' ? 'admin' : 'user') as 'user' | 'collector' | 'admin',
-    address: address || 'Bengaluru, Karnataka',
-    latitude: 12.9716,
-    longitude: 77.6412,
-    eco_credits: 50,
-    total_waste_recycled: 0,
-    total_earnings: 0,
-    created_at: new Date().toISOString(),
-  };
-
-  db.saveUser(newUser);
-
-  // If registering as collector, also add to collectors table
-  if (newUser.role === 'collector') {
-    db.saveCollector({
-      id: `col_${Date.now()}`,
-      user_id: newUser.id,
-      name: newUser.name,
-      phone: newUser.phone,
-      verification_status: 'PENDING',
-      service_area: newUser.address,
-      latitude: 12.9716,
-      longitude: 77.6412,
-      available: true,
-      rating: 5.0,
-      total_pickups: 0,
-      total_earnings: 0,
-    });
-  }
-
-  res.status(201).json(newUser);
+  res.status(410).json({ error: 'Use the authenticated registration endpoint.' });
 });
 
 app.put('/api/users/:id', (req, res) => {
+  if (!ownsUser(req as AuthenticatedRequest, req.params.id)) return res.status(403).json({ error: 'Forbidden' });
   const user = db.getUserById(req.params.id);
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
-  const updated = db.saveUser({
-    ...user,
-    ...req.body,
-    id: user.id, // Immutable ID
-  });
-  res.json(updated);
+  const allowedUpdates = ['name', 'phone', 'address', 'profile_image'] as const;
+  const safeUpdates = Object.fromEntries(
+    allowedUpdates.filter((key) => req.body[key] !== undefined).map((key) => [key, req.body[key]])
+  );
+  res.json(sanitizeUser(db.saveUser({ ...user, ...safeUpdates, id: user.id })));
 });
 
 // ----------------------------------------------------
@@ -283,7 +266,7 @@ app.get('/api/materials', (req, res) => {
   res.json(materials);
 });
 
-app.put('/api/materials/:id', (req, res) => {
+app.put('/api/materials/:id', requireRole('admin'), (req, res) => {
   const { current_price_per_kg, recyclable, disposal_instruction, material_name, category } = req.body;
   const updated = db.updateMaterial(req.params.id, {
     ...(current_price_per_kg !== undefined && { current_price_per_kg: Number(current_price_per_kg) }),
@@ -299,7 +282,7 @@ app.put('/api/materials/:id', (req, res) => {
   res.json(updated);
 });
 
-app.post('/api/materials', (req, res) => {
+app.post('/api/materials', requireRole('admin'), (req, res) => {
   const { material_name, category, current_price_per_kg, unit, recyclable, disposal_instruction } = req.body;
   if (!material_name || current_price_per_kg === undefined) {
     return res.status(400).json({ error: 'Material name and price are required' });
@@ -320,24 +303,28 @@ app.post('/api/materials', (req, res) => {
 // ----------------------------------------------------
 // 4. Real AI Waste Scanner (Gemini Vision)
 // ----------------------------------------------------
-app.post('/api/waste/scan', async (req, res) => {
+app.post('/api/waste/scan', aiLimiter, async (req, res) => {
   try {
-    const { image, mimeType, userId } = req.body;
-    if (!image) {
+    const { image, mimeType, language } = req.body;
+    const userId = (req as AuthenticatedRequest).user?.id;
+    if (typeof image !== 'string' || image.length === 0 || image.length > 8 * 1024 * 1024) {
       return res.status(400).json({ error: 'Image data is required' });
     }
+    if (mimeType && !['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
+      return res.status(400).json({ error: 'Only JPEG, PNG, and WebP images are supported' });
+    }
 
-    const analysis = await analyzeWasteImage(image, mimeType || 'image/jpeg');
+    const analysis = await analyzeWasteImage(image, mimeType || 'image/jpeg', language);
 
     // Save record to waste_scans
     const scanRecord = db.addScan({
       id: `scan_${Date.now()}`,
-      user_id: userId || 'usr_aditi',
+      user_id: userId!,
       detected_material: analysis.material,
       waste_category: analysis.category,
       confidence: analysis.confidence,
-      estimated_weight: analysis.estimated_weight,
-      estimated_value: analysis.estimated_value,
+      estimated_weight: analysis.estimated_weight ?? 0,
+      estimated_value: analysis.estimated_value ?? 0,
       disposal_instruction: analysis.disposal_instruction,
       created_at: new Date().toISOString(),
     });
@@ -351,7 +338,7 @@ app.post('/api/waste/scan', async (req, res) => {
       description: `Detected ${analysis.material} (${analysis.category}) with ${Math.round(analysis.confidence * 100)}% AI confidence`,
       scan_id: scanRecord.id,
       waste_material: analysis.material,
-      weight: analysis.estimated_weight,
+      weight: analysis.estimated_weight ?? undefined,
       timestamp: new Date().toISOString(),
       status: 'SCANNED',
     });
@@ -387,10 +374,14 @@ app.get('/api/collectors/:id', (req, res) => {
   if (!collector) {
     return res.status(404).json({ error: 'Collector not found' });
   }
+  const auth = req as AuthenticatedRequest;
+  if (!isAdmin(auth) && collector.user_id !== auth.user?.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   res.json(collector);
 });
 
-app.put('/api/collectors/:id/verify', (req, res) => {
+app.put('/api/collectors/:id/verify', requireRole('admin'), (req, res) => {
   const { status } = req.body;
   if (!['PENDING', 'VERIFIED', 'REJECTED', 'SUSPENDED'].includes(status)) {
     return res.status(400).json({ error: 'Invalid verification status' });
@@ -408,6 +399,10 @@ app.put('/api/collectors/:id/availability', (req, res) => {
   if (!col) {
     return res.status(404).json({ error: 'Collector not found' });
   }
+  const auth = req as AuthenticatedRequest;
+  if (!isAdmin(auth) && col.user_id !== auth.user?.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   col.available = Boolean(available);
   db.saveCollector(col);
   res.json(col);
@@ -417,13 +412,21 @@ app.put('/api/collectors/:id/availability', (req, res) => {
 // 6. Pickup Lifecycle API
 // ----------------------------------------------------
 app.get('/api/pickups', (req, res) => {
-  const { userId, collectorId, status } = req.query;
+  const { status } = req.query;
+  const auth = req as AuthenticatedRequest;
+  const userId = auth.user?.role === 'user' ? auth.user.id : undefined;
+  const collector = auth.user?.role === 'collector'
+    ? db.getCollectors().find((item) => item.user_id === auth.user?.id)
+    : undefined;
+  const collectorId = auth.user?.role === 'collector' ? collector?.id : undefined;
   const pickups = db.getPickups({
-    userId: userId as string | undefined,
-    collectorId: collectorId as string | undefined,
+    userId,
+    collectorId,
     status: status as PickupStatus | undefined,
   });
-  res.json(pickups);
+  res.json(auth.user?.role === 'admin' ? pickups : pickups.filter((pickup) =>
+    pickup.user_id === auth.user?.id || pickup.collector_id === collectorId
+  ));
 });
 
 app.get('/api/pickups/:id', (req, res) => {
@@ -431,14 +434,16 @@ app.get('/api/pickups/:id', (req, res) => {
   if (!pickup) {
     return res.status(404).json({ error: 'Pickup not found' });
   }
+  const auth = req as AuthenticatedRequest;
+  if (!isAdmin(auth) && pickup.user_id !== auth.user?.id && !collectorOwnsPickup(auth, pickup)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   res.json(pickup);
 });
 
 // User requests a pickup
 app.post('/api/pickups', (req, res) => {
   const {
-    user_id,
-    collector_id,
     waste_category,
     items_summary,
     estimated_weight,
@@ -446,12 +451,14 @@ app.post('/api/pickups', (req, res) => {
     preferred_date,
     preferred_time,
   } = req.body;
+  const user_id = (req as AuthenticatedRequest).user!.id;
 
   if (!user_id || !pickup_address || !estimated_weight) {
     return res.status(400).json({ error: 'User, address, and estimated weight are required' });
   }
 
   const user = db.getUserById(user_id);
+  if (!user) return res.status(401).json({ error: 'Authenticated user not found' });
   const materials = db.getMaterials();
   const matchedMat =
     materials.find((m) => m.category.toLowerCase() === (waste_category || '').toLowerCase()) || materials[0];
@@ -461,7 +468,7 @@ app.post('/api/pickups', (req, res) => {
   const randomOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
   // If no collector selected, auto-match first available verified collector
-  let assignedCollectorId = collector_id;
+  let assignedCollectorId: string | undefined;
   let assignedCollectorName = '';
   if (!assignedCollectorId) {
     const verifiedCol = db.getCollectors().find((c) => c.verification_status === 'VERIFIED' && c.available);
@@ -469,34 +476,38 @@ app.post('/api/pickups', (req, res) => {
       assignedCollectorId = verifiedCol.id;
       assignedCollectorName = verifiedCol.name;
     }
-  } else {
-    const col = db.getCollectorById(assignedCollectorId);
-    if (col) assignedCollectorName = col.name;
   }
+  const assignedCollector = assignedCollectorId ? db.getCollectorById(assignedCollectorId) : undefined;
 
   const now = new Date().toISOString();
   const dateStr = now.slice(0, 10).replace(/-/g, '');
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const pickupId = `ES-${dateStr}-${randomSuffix}`;
 
+  const latitude = Number(req.body.latitude);
+  const longitude = Number(req.body.longitude);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ error: 'A valid current pickup latitude and longitude are required' });
+  }
+
   const newPickup: DbPickupRequest = {
     id: pickupId,
     user_id,
-    user_name: user ? user.name : 'Eco Citizen',
-    user_phone: user ? user.phone : '+91 98450 12345',
+    user_name: user.name,
+    user_phone: user.phone,
     collector_id: assignedCollectorId,
     collector_name: assignedCollectorName || 'Green Earth Kabadiwala Hub',
-    collector_rating: 4.9,
-    collector_phone: '+91 98765 43210',
-    collector_vehicle: 'KA-03-EC-4821 (E-Loader)',
+    collector_rating: assignedCollector?.rating,
+    collector_phone: assignedCollector?.phone,
+    collector_vehicle: undefined,
     waste_category: waste_category || 'Dry Recyclables',
     items_summary: items_summary || 'Sorted Household Scrap',
     estimated_weight: estWeightNum,
     estimated_value: estValue,
     pickup_address,
     special_instructions: req.body.special_instructions || '',
-    latitude: user ? user.latitude : 12.9716,
-    longitude: user ? user.longitude : 77.6412,
+    latitude,
+    longitude,
     preferred_date: preferred_date || 'Today',
     preferred_time: preferred_time || '10:30 AM',
     status: 'REQUESTED',
@@ -585,8 +596,16 @@ app.post('/api/pickups', (req, res) => {
 });
 
 // Backend OTP verification endpoint
-app.post('/api/pickups/:id/verify-otp', (req, res) => {
-  const { otp, collector_id } = req.body;
+app.post('/api/pickups/:id/verify-otp', otpLimiter, (req, res) => {
+  const { otp } = req.body;
+  const pickupRecord = db.getPickupById(req.params.id);
+  if (!pickupRecord) return res.status(404).json({ error: 'Pickup request not found' });
+  const auth = req as AuthenticatedRequest;
+  if (!collectorOwnsPickup(auth, pickupRecord)) return res.status(403).json({ error: 'Forbidden' });
+  if (!['ARRIVED', 'OTP_PENDING', 'OTP_VERIFICATION'].includes(pickupRecord.status)) {
+    return res.status(400).json({ error: 'OTP cannot be verified for this pickup state' });
+  }
+  const collector_id = pickupRecord.collector_id;
   if (!otp) {
     return res.status(400).json({ error: 'OTP code is required' });
   }
@@ -634,11 +653,8 @@ app.post('/api/pickups/:id/verify-otp', (req, res) => {
 });
 
 // Regenerate OTP Endpoint
-app.post('/api/pickups/:id/regenerate-otp', (req, res) => {
-  const { user_id } = req.body;
-  if (!user_id) {
-    return res.status(400).json({ error: 'User ID is required' });
-  }
+app.post('/api/pickups/:id/regenerate-otp', otpLimiter, (req, res) => {
+  const user_id = (req as AuthenticatedRequest).user!.id;
 
   const result = db.regeneratePickupOtp(req.params.id, user_id);
   if (!result.success) {
@@ -650,12 +666,19 @@ app.post('/api/pickups/:id/regenerate-otp', (req, res) => {
 
 // Cancel Pickup Endpoint
 app.post('/api/pickups/:id/cancel', (req, res) => {
-  const { cancelled_by, role, reason } = req.body;
-  if (!cancelled_by) {
-    return res.status(400).json({ error: 'User/Collector ID is required' });
+  const { reason } = req.body;
+  const auth = req as AuthenticatedRequest;
+  const pickup = db.getPickupById(req.params.id);
+  if (!pickup) return res.status(404).json({ error: 'Pickup request not found' });
+  const canCancel = pickup.user_id === auth.user?.id || collectorOwnsPickup(auth, pickup) || isAdmin(auth);
+  if (!canCancel) return res.status(403).json({ error: 'Forbidden' });
+  if (['COMPLETED', 'CANCELLED', 'REJECTED', 'FAILED'].includes(pickup.status)) {
+    return res.status(400).json({ error: 'This pickup cannot be cancelled in its current state' });
   }
+  const cancelledBy = auth.user!.id;
+  const role = auth.user!.role;
 
-  const updated = db.cancelPickup(req.params.id, cancelled_by, role || 'user', reason);
+  const updated = db.cancelPickup(req.params.id, cancelledBy, role, reason);
   if (!updated) {
     return res.status(404).json({ error: 'Pickup request not found' });
   }
@@ -682,7 +705,8 @@ app.post('/api/pickups/:id/cancel', (req, res) => {
 
 // Rate Collector Endpoint
 app.post('/api/pickups/:id/rate', (req, res) => {
-  const { user_id, rating, review } = req.body;
+  const { rating, review } = req.body;
+  const user_id = (req as AuthenticatedRequest).user!.id;
   const pickup = db.getPickupById(req.params.id);
 
   if (!pickup) {
@@ -704,7 +728,7 @@ app.post('/api/pickups/:id/rate', (req, res) => {
     id: `rat_${Date.now()}`,
     pickup_id: pickup.id,
     user_id,
-    collector_id: pickup.collector_id || 'col-1',
+    collector_id: pickup.collector_id!,
     rating: ratingNum,
     review: review || '',
     created_at: new Date().toISOString(),
@@ -768,7 +792,8 @@ function validateStatusTransition(current: PickupStatus, target: PickupStatus): 
 
 // Collector updates status: ASSIGNING, ACCEPTED, ON_THE_WAY, ARRIVED, OTP_VERIFICATION, etc.
 app.put('/api/pickups/:id/status', (req, res) => {
-  const { status, collector_id } = req.body;
+  const { status } = req.body;
+  const auth = req as AuthenticatedRequest;
   const validStatuses: PickupStatus[] = [
     'REQUESTED',
     'ASSIGNING',
@@ -799,6 +824,14 @@ app.put('/api/pickups/:id/status', (req, res) => {
   if (!existing) {
     return res.status(404).json({ error: 'Pickup request not found' });
   }
+
+  const actorCollector = auth.user?.role === 'collector'
+    ? db.getCollectors().find((item) => item.user_id === auth.user?.id)
+    : undefined;
+  if (!isAdmin(auth) && (!actorCollector || existing.collector_id !== actorCollector.id)) {
+    return res.status(403).json({ error: 'Only the assigned collector can update this pickup' });
+  }
+  const collector_id = actorCollector?.id || existing.collector_id;
 
   // Authorization check: if pickup already assigned to another collector, forbid change
   if (collector_id && existing.collector_id && existing.collector_id !== collector_id) {
@@ -958,17 +991,18 @@ function calculateHaversineDistance(
 
 // Collector updates live GPS coordinates while on the way
 app.put('/api/pickups/:id/location', (req, res) => {
-  const { collector_id, latitude, longitude, tracking_active } = req.body;
+  const { latitude, longitude, tracking_active } = req.body;
   const pickup = db.getPickupById(req.params.id);
 
   if (!pickup) {
     return res.status(404).json({ error: 'Pickup not found' });
   }
 
-  // Security: only assigned collector can update this pickup's location
-  if (collector_id && pickup.collector_id && pickup.collector_id !== collector_id) {
+  const auth = req as AuthenticatedRequest;
+  if (!collectorOwnsPickup(auth, pickup)) {
     return res.status(403).json({ error: 'Unauthorized: You are not assigned to this pickup' });
   }
+  const collector_id = pickup.collector_id!;
 
   // Tracking only active during COLLECTOR_ON_THE_WAY / ON_THE_WAY
   if (pickup.status !== 'COLLECTOR_ON_THE_WAY' && pickup.status !== 'ON_THE_WAY' && tracking_active !== false) {
@@ -991,10 +1025,9 @@ app.put('/api/pickups/:id/location', (req, res) => {
     return res.status(400).json({ error: 'Invalid latitude or longitude coordinates' });
   }
 
-  const effectiveCollectorId = collector_id || pickup.collector_id || 'col-1';
   const updatedLocation = db.updatePickupLocation({
     pickup_id: pickup.id,
-    collector_id: effectiveCollectorId,
+    collector_id,
     latitude: latNum,
     longitude: lngNum,
     tracking_active: tracking_active !== undefined ? Boolean(tracking_active) : true,
@@ -1011,6 +1044,10 @@ app.get('/api/pickups/:id/location', (req, res) => {
   }
 
   const { userId } = req.query;
+  const auth = req as AuthenticatedRequest;
+  if (!isAdmin(auth) && pickup.user_id !== auth.user?.id && !collectorOwnsPickup(auth, pickup)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   // Security check: Only allow customer for this pickup, assigned collector, or admin
   if (userId) {
@@ -1091,16 +1128,25 @@ app.post('/api/pickups/:id/location/stop', (req, res) => {
   if (!pickup) {
     return res.status(404).json({ error: 'Pickup not found' });
   }
+  const auth = req as AuthenticatedRequest;
+  if (!isAdmin(auth) && !collectorOwnsPickup(auth, pickup)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   db.stopPickupLocationTracking(pickup.id);
   res.json({ status: 'ok', tracking_active: false });
 });
 
 // Collector weighs waste: enters actual_weight, calculates final_value
 app.put('/api/pickups/:id/weigh', (req, res) => {
-  const { actual_weight, rate_per_kg } = req.body;
+  const { actual_weight } = req.body;
   const pickup = db.getPickupById(req.params.id);
   if (!pickup) {
     return res.status(404).json({ error: 'Pickup not found' });
+  }
+  const auth = req as AuthenticatedRequest;
+  if (!collectorOwnsPickup(auth, pickup)) return res.status(403).json({ error: 'Forbidden' });
+  if (!['OTP_VERIFIED', 'COLLECTING', 'WEIGHED', 'WEIGHT_VERIFIED'].includes(pickup.status)) {
+    return res.status(400).json({ error: 'Pickup is not ready for weighing' });
   }
 
   const weightNum = Number(actual_weight);
@@ -1112,7 +1158,7 @@ app.put('/api/pickups/:id/weigh', (req, res) => {
   const materials = db.getMaterials();
   const matched =
     materials.find((m) => m.category.toLowerCase() === pickup.waste_category.toLowerCase()) || materials[0];
-  const unitRate = Number(rate_per_kg) || matched.current_price_per_kg;
+  const unitRate = matched.current_price_per_kg;
 
   const finalValue = Number((weightNum * unitRate).toFixed(2));
 
@@ -1159,6 +1205,11 @@ app.put('/api/pickups/:id/complete', (req, res) => {
   if (!pickup) {
     return res.status(404).json({ error: 'Pickup not found' });
   }
+  const auth = req as AuthenticatedRequest;
+  if (!collectorOwnsPickup(auth, pickup)) return res.status(403).json({ error: 'Forbidden' });
+  if (!['WEIGHED', 'WEIGHT_VERIFIED', 'AMOUNT_CONFIRMED', 'PAYMENT_PENDING'].includes(pickup.status)) {
+    return res.status(400).json({ error: 'Pickup is not ready for completion' });
+  }
 
   if (pickup.status === 'COMPLETED') {
     return res.status(400).json({ error: 'Pickup has already been completed' });
@@ -1174,7 +1225,7 @@ app.put('/api/pickups/:id/complete', (req, res) => {
     id: `pay_${Date.now()}`,
     pickup_id: pickup.id,
     user_id: pickup.user_id,
-    collector_id: pickup.collector_id || 'col-1',
+    collector_id: pickup.collector_id!,
     amount: finalAmount,
     payment_method: method,
     payment_status: 'PAID',
@@ -1289,14 +1340,16 @@ app.put('/api/pickups/:id/complete', (req, res) => {
 // 7. Payments & Eco Credits Transactions API
 // ----------------------------------------------------
 app.get('/api/payments', (req, res) => {
-  const { userId } = req.query;
-  const payments = db.getPayments(userId as string | undefined);
+  const auth = req as AuthenticatedRequest;
+  const userId = isAdmin(auth) ? req.query.userId as string | undefined : auth.user!.id;
+  const payments = db.getPayments(userId);
   res.json(payments);
 });
 
 app.get('/api/eco/transactions', (req, res) => {
-  const { userId } = req.query;
-  const txs = db.getEcoTransactions(userId as string | undefined);
+  const auth = req as AuthenticatedRequest;
+  const userId = isAdmin(auth) ? req.query.userId as string | undefined : auth.user!.id;
+  const txs = db.getEcoTransactions(userId);
   res.json(txs);
 });
 
@@ -1323,7 +1376,7 @@ app.get('/api/partners/:id', (req, res) => {
   res.json(partner);
 });
 
-app.post('/api/partners', (req, res) => {
+app.post('/api/partners', requireRole('admin'), (req, res) => {
   const {
     partner_name,
     category,
@@ -1361,7 +1414,7 @@ app.post('/api/partners', (req, res) => {
   res.status(201).json(newPartner);
 });
 
-app.put('/api/partners/:id/status', (req, res) => {
+app.put('/api/partners/:id/status', requireRole('admin'), (req, res) => {
   const { status, verified } = req.body;
   const updated = db.updatePartnerStatus(req.params.id, status, verified);
   if (!updated) {
@@ -1380,7 +1433,7 @@ app.get('/api/rewards', (req, res) => {
   res.json(rewards);
 });
 
-app.post('/api/rewards', (req, res) => {
+app.post('/api/rewards', requireRole('admin'), (req, res) => {
   const {
     partner_id,
     partner_name,
@@ -1430,7 +1483,7 @@ app.post('/api/rewards', (req, res) => {
   res.status(201).json(newReward);
 });
 
-app.put('/api/rewards/:id', (req, res) => {
+app.put('/api/rewards/:id', requireRole('admin'), (req, res) => {
   const updated = db.updateReward(req.params.id, req.body);
   if (!updated) {
     return res.status(404).json({ error: 'Reward not found' });
@@ -1444,7 +1497,8 @@ const inFlightRedemptions = new Set<string>();
 // Server-side Atomic Redemption with Provider Fulfillment & Credit Reversal
 app.post('/api/rewards/redeem', async (req, res) => {
   try {
-    const { user_id, reward_id } = req.body;
+    const { reward_id } = req.body;
+    const user_id = (req as AuthenticatedRequest).user!.id;
     if (!user_id || !reward_id) {
       return res.status(400).json({ error: 'User ID and Reward ID are required' });
     }
@@ -1468,7 +1522,8 @@ app.post('/api/rewards/redeem', async (req, res) => {
 
 // Authenticated User Credit Ledger API
 app.get('/api/user/credits/ledger', (req, res) => {
-  const { userId } = req.query;
+  const auth = req as AuthenticatedRequest;
+  const userId = isAdmin(auth) ? req.query.userId as string | undefined : auth.user!.id;
   if (!userId) {
     return res.status(400).json({ error: 'User ID is required' });
   }
@@ -1500,8 +1555,9 @@ app.post('/api/rewards/verify-code', (req, res) => {
 });
 
 app.get('/api/rewards/redemptions', (req, res) => {
-  const { userId } = req.query;
-  const redemptions = db.getRedemptions(userId as string | undefined);
+  const auth = req as AuthenticatedRequest;
+  const userId = isAdmin(auth) ? req.query.userId as string | undefined : auth.user!.id;
+  const redemptions = db.getRedemptions(userId);
   res.json(redemptions);
 });
 
@@ -1514,28 +1570,34 @@ app.get('/api/partner/dashboard/:partnerId', (req, res) => {
 });
 
 app.get('/api/user/activities', (req, res) => {
-  const { userId, category } = req.query;
-  if (!userId) return res.json([]);
-  const activities = db.getUserActivities(userId as string, category as string);
+  const auth = req as AuthenticatedRequest;
+  const userId = isAdmin(auth) ? req.query.userId as string | undefined : auth.user!.id;
+  const { category } = req.query;
+  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+  const activities = db.getUserActivities(userId, category as string);
   res.json(activities);
 });
 
 app.get('/api/notifications', (req, res) => {
-  const { userId, role } = req.query;
-  if (!userId && !role) return res.json([]);
-  const notifs = db.getNotifications((userId as string) || 'all', role as RecipientRole | undefined);
+  const auth = req as AuthenticatedRequest;
+  const userId = isAdmin(auth) ? req.query.userId as string | undefined : auth.user!.id;
+  const role = isAdmin(auth) ? req.query.role as RecipientRole | undefined : auth.user!.role;
+  const notifs = db.getNotifications(userId || 'all', role);
   res.json(notifs);
 });
 
 app.put('/api/notifications/:id/read', (req, res) => {
+  const notification = db.getNotificationById?.(req.params.id);
+  if (notification && !isAdmin(req as AuthenticatedRequest) && notification.user_id !== (req as AuthenticatedRequest).user!.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   const updated = db.markNotificationRead(req.params.id);
   if (!updated) return res.status(404).json({ error: 'Notification not found' });
   res.json(updated);
 });
 
 app.put('/api/notifications/read-all', (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+  const userId = (req as AuthenticatedRequest).user!.id;
   db.markAllNotificationsRead(userId);
   res.json({ status: 'ok' });
 });
@@ -1543,7 +1605,7 @@ app.put('/api/notifications/read-all', (req, res) => {
 // ----------------------------------------------------
 // 9. Admin Stats & Analytics API
 // ----------------------------------------------------
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', requireRole('admin'), (req, res) => {
   const stats = db.getAdminStats();
   res.json(stats);
 });
@@ -1551,13 +1613,18 @@ app.get('/api/admin/stats', (req, res) => {
 // ----------------------------------------------------
 // 10. Real EcoAi Chatbot API
 // ----------------------------------------------------
-app.post('/api/gemini/chat', async (req, res) => {
+app.post('/api/gemini/chat', aiLimiter, async (req, res) => {
   try {
-    const { question, history } = req.body;
-    if (!question || !question.trim()) {
+    const { question, history, language } = req.body;
+    if (typeof question !== 'string' || !question.trim() || question.length > 4000) {
       return res.status(400).json({ error: 'Question is required' });
     }
-    const answer = await askEcoAiChat(question, history);
+    const safeHistory = Array.isArray(history)
+      ? history.slice(-10).filter((item) =>
+          item && (item.role === 'user' || item.role === 'model') && typeof item.text === 'string' && item.text.length <= 4000
+        )
+      : [];
+    const answer = await askEcoAiChat(question.trim(), safeHistory, language);
     res.json({ answer });
   } catch (err: any) {
     console.error('[API] EcoAi chat error:', err);
@@ -1567,10 +1634,9 @@ app.post('/api/gemini/chat', async (req, res) => {
 
 // ----------------------------------------------------
 // Vite Middleware / Static Serving
-async function listenWithFallback(serverApp: typeof app, targetPort: number, maxAttempts = 50): Promise<number> {
+async function listenWithFallback(serverApp: typeof app, targetPort: number): Promise<number> {
   return new Promise((resolve, reject) => {
     let currentPort = targetPort;
-    let attempts = 0;
 
     const tryListen = () => {
       const server = serverApp.listen(currentPort, '0.0.0.0', () => {
@@ -1579,11 +1645,8 @@ async function listenWithFallback(serverApp: typeof app, targetPort: number, max
       });
 
       server.on('error', (err: any) => {
-        if (err.code === 'EADDRINUSE' && attempts < maxAttempts) {
-          console.warn(`[EcoScan IN] Port ${currentPort} is occupied. Trying port ${currentPort + 1}...`);
-          currentPort++;
-          attempts++;
-          tryListen();
+        if (err.code === 'EADDRINUSE') {
+          reject(new Error(`Port ${currentPort} is already in use. Stop the existing EcoScan server or set PORT to a free port.`));
         } else {
           reject(err);
         }

@@ -10,6 +10,7 @@ interface SchedulePickupModalProps {
   preselectedItemName?: string;
   preselectedWeightKg?: number;
   preselectedPayout?: string;
+  userId: string;
 }
 
 export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
@@ -20,6 +21,7 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
   preselectedItemName,
   preselectedWeightKg,
   preselectedPayout,
+  userId,
 }) => {
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([
     'Newspaper / Cartons',
@@ -79,6 +81,17 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      if (!navigator.geolocation) {
+        setValidationError('Current location is required to schedule a pickup.');
+        return;
+      }
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        });
+      });
       const finalItems = preselectedItemName
         ? `${preselectedItemName} (${weightKg}kg)`
         : selectedMaterials.length > 0
@@ -88,13 +101,15 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
       let createdPickupItem: any = null;
       try {
         const res = await api.createPickup({
-          user_id: 'usr_aditi',
+          user_id: userId,
           pickup_address: pickupAddress.trim(),
           estimated_weight: weightKg,
           waste_category: selectedMaterials[0] || 'Dry Recyclables',
           items_summary: finalItems,
           preferred_date: selectedSlot,
           special_instructions: specialInstructions.trim(),
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
         } as any);
         if (res && res.id) {
           createdPickupItem = res;

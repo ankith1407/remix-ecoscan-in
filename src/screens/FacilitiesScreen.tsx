@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ScrapRate, Facility, ScheduledPickup, LiveCollectorLocation } from '../types';
 import { ScrapRateTicker } from '../components/ScrapRateTicker';
+import { LiveTrackingMap } from '../components/LiveTrackingMap';
 import { api } from '../services/api';
+import { useI18n } from '../i18n';
 
 interface FacilitiesScreenProps {
   rates: ScrapRate[];
@@ -11,6 +13,7 @@ interface FacilitiesScreenProps {
   onCancelPickup?: (pickupId: string) => void;
   onSelectPickup?: (pickupId: string) => void;
   onOpenReceipt?: (pickupId: string) => void;
+  userId: string;
 }
 
 export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
@@ -21,7 +24,9 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
   onCancelPickup,
   onSelectPickup,
   onOpenReceipt,
+  userId,
 }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'facilities' | 'pickups'>('facilities');
   const [selectedFilter, setSelectedFilter] = useState<string>('All Materials');
   const [searchQuery, setSearchQuery] = useState<string>('Indiranagar 100ft Rd, Bengaluru');
@@ -46,7 +51,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
     const fetchLiveTracking = async () => {
       try {
-        const remotePickups = await api.getPickups({ userId: 'usr_aditi' }).catch(() => []);
+        const remotePickups = await api.getPickups({ userId }).catch(() => []);
         if (!isMounted) return;
 
         const newDbMap: Record<string, { status: string }> = {};
@@ -60,7 +65,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
           const status = newDbMap[p.id]?.status || p.collectorStatus;
           if (status === 'COLLECTOR_ON_THE_WAY' || status === 'ON_THE_WAY') {
             try {
-              const loc = await api.getCollectorLocation(p.id, 'usr_aditi');
+              const loc = await api.getCollectorLocation(p.id, userId);
               if (isMounted) {
                 setLiveLocations((prev) => ({ ...prev, [p.id]: loc }));
               }
@@ -80,7 +85,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [uniquePickups, activeTab]);
+  }, [uniquePickups, activeTab, userId]);
 
   const filterOptions = [
     { label: 'All Materials', color: 'bg-[#B8E600]' },
@@ -122,7 +127,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
           type="button"
         >
           <span className="material-symbols-outlined text-[17px]">near_me</span>
-          <span>Nearby Centers</span>
+          <span>{t('nearbyCenters')}</span>
         </button>
 
         <button
@@ -135,9 +140,9 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
           type="button"
         >
           <span className="material-symbols-outlined text-[17px]">local_shipping</span>
-          <span>Pickups</span>
+          <span>{t('pickups')}</span>
           <span className="bg-[#E8F3EB] text-[#174D35] text-[10px] px-2 py-0.5 rounded-full font-bold border border-[#DCE5DE]">
-            {activeInFlightCount} Active
+            {activeInFlightCount} {t('active')}
           </span>
         </button>
       </div>
@@ -245,7 +250,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
               type="button"
             >
               <span className="material-symbols-outlined text-[18px]">calendar_add_on</span>
-              <span>Schedule Doorstep Pickup</span>
+              <span>{t('schedulePickup')}</span>
             </button>
           </div>
 
@@ -386,7 +391,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
                       <button
                         onClick={() =>
-                          alert('Opening Google Maps navigation to Swachh Bharat BBMP DWCC...')
+                          alert('Opening directions to Swachh Bharat BBMP DWCC...')
                         }
                         className="py-2 px-2 rounded-xl bg-[#FFFFFF] text-[#172019] text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-[#E8F3EB] transition-colors border border-[#DCE5DE]"
                         type="button"
@@ -411,7 +416,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
                       <button
                         onClick={() =>
-                          alert(`Navigating to ${facility.name} on Google Maps (Fastest clean route)...`)
+                          alert(`Opening directions to ${facility.name}...`)
                         }
                         className="py-2 px-2 rounded-xl bg-[#FFFFFF] text-[#172019] text-xs font-semibold flex items-center justify-center gap-1 hover:bg-[#E8F3EB] transition-colors border border-[#DCE5DE]"
                         type="button"
@@ -482,9 +487,9 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       {activeTab === 'pickups' && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-widest text-[#174D35] font-bold">Scheduled Pickups</span>
+            <span className="text-xs uppercase tracking-widest text-[#174D35] font-bold">{t('scheduledPickups')}</span>
             <span className="bg-[#E8F3EB] text-[#174D35] text-[10px] font-bold px-2.5 py-1 rounded-full uppercase border border-[#DCE5DE]">
-              {activeInFlightCount} In-Flight
+              {activeInFlightCount} {t('inFlight')}
             </span>
           </div>
 
@@ -603,7 +608,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                           <span className="material-symbols-outlined text-[16px] text-[#3FA66B]">
                             local_shipping
                           </span>
-                          <span>Collector On The Way</span>
+                          <span>{t('collectorOnWay')}</span>
                         </span>
                       </div>
 
@@ -657,7 +662,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                                 {trackingData.location.longitude.toFixed(4)}° E
                               </span>
                               <span className="text-[10px] text-[#65736A]">
-                                Updated{' '}
+                                {trackingData.location.tracking_active ? t('trackingActive') : t('trackingStopped')} • {t('updated')}{' '}
                                 {new Date(trackingData.location.updated_at).toLocaleTimeString([], {
                                   hour: '2-digit',
                                   minute: '2-digit',
@@ -674,24 +679,16 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                                 Pickup Destination
                               </span>
                               <span className="text-xs text-[#172019]">
-                                {trackingData.pickup_location?.address ||
-                                  'Flat 402, Green Meadows, 12th Main, Indiranagar'}
+                                {trackingData.pickup_location?.address || t('pickupAddressUnavailable')}
                               </span>
                             </div>
                           </div>
                         </div>
 
-                        {/* Map Architecture Notice */}
-                        <div className="p-2 rounded-lg bg-[#FFFFFF] border border-[#DCE5DE] flex items-center gap-2 text-[11px] text-[#65736A]">
-                          <span className="material-symbols-outlined text-[15px] text-[#D97706] shrink-0">
-                            map
-                          </span>
-                          <span>
-                            {trackingData.maps_api_configured
-                              ? 'Google Maps API active.'
-                              : 'Google Maps API key required for live traffic map rendering.'}
-                          </span>
-                        </div>
+                        <LiveTrackingMap
+                          collectorLocation={trackingData.location}
+                          pickupLocation={trackingData.pickup_location}
+                        />
                       </div>
                     ) : (
                       <div className="p-3 rounded-lg bg-[#FFFFFF] border border-[#DCE5DE] text-center flex flex-col items-center justify-center gap-1">
@@ -699,10 +696,10 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                           location_searching
                         </span>
                         <p className="text-xs font-medium text-[#172019]">
-                          Collector location is currently unavailable.
+                          {t('locationUnavailable')}
                         </p>
                         <span className="text-[10px] text-[#65736A]">
-                          Coordinates will display once the driver starts location sharing.
+                          {t('locationWaiting')}
                         </span>
                       </div>
                     )}

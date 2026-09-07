@@ -3,6 +3,81 @@ import { db } from './db';
 
 let aiClient: GoogleGenAI | null = null;
 
+const TEMPORARY_GEMINI_MESSAGE = 'EcoAI is temporarily busy. Please try again in a moment.';
+const MAX_GEMINI_RETRIES = 3;
+
+function localizedTemporaryMessage(language: GeminiLanguage = 'EN'): string {
+  if (language === 'HI') return 'EcoAI अभी व्यस्त है। कृपया थोड़ी देर बाद फिर प्रयास करें।';
+  if (language === 'TE') return 'EcoAI ప్రస్తుతం బిజీగా ఉంది. దయచేసి కొద్దిసేపటి తర్వాత ప్రయత్నించండి.';
+  return TEMPORARY_GEMINI_MESSAGE;
+}
+
+class GeminiTemporaryError extends Error {
+  readonly temporary = true;
+
+  constructor(language: GeminiLanguage = 'EN') {
+    super(localizedTemporaryMessage(language));
+    this.name = 'GeminiTemporaryError';
+  }
+}
+
+function getGeminiErrorDetails(error: unknown): { status?: number | string; text: string } {
+  const candidate = error as any;
+  const status = candidate?.status ?? candidate?.statusCode ?? candidate?.response?.status;
+  const text = [candidate?.message, candidate?.code, candidate?.status, candidate?.error?.message]
+    .filter((value) => value !== undefined && value !== null)
+    .join(' ')
+    .toLowerCase();
+  return { status, text };
+}
+
+function isGeminiAuthenticationError(error: unknown): boolean {
+  const { status, text } = getGeminiErrorDetails(error);
+  return (
+    status === 400 ||
+    status === 401 ||
+    status === 403 ||
+    text.includes('api_key_invalid') ||
+    text.includes('api key not valid') ||
+    text.includes('invalid api key') ||
+    text.includes('authentication') ||
+    text.includes('unauthorized')
+  );
+}
+
+function isGeminiTemporaryError(error: unknown): boolean {
+  const { status, text } = getGeminiErrorDetails(error);
+  const numericStatus = typeof status === 'string' ? Number(status) : status;
+  return (
+    numericStatus === 429 ||
+    (typeof numericStatus === 'number' && numericStatus >= 500 && numericStatus <= 599) ||
+    text.includes('resource_exhausted') ||
+    text.includes('quota') ||
+    text.includes('unavailable') ||
+    text.includes('temporarily') ||
+    text.includes('timeout') ||
+    text.includes('timed out') ||
+    text.includes('econnreset') ||
+    text.includes('fetch failed')
+  );
+}
+
+async function withGeminiRetries<T>(operation: () => Promise<T>, language: GeminiLanguage = 'EN'): Promise<T> {
+  for (let retry = 0; ; retry += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (isGeminiAuthenticationError(error) || !isGeminiTemporaryError(error)) {
+        throw error;
+      }
+      if (retry >= MAX_GEMINI_RETRIES) {
+        throw new GeminiTemporaryError(language);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** retry));
+    }
+  }
+}
+
 function getApiKey(): string | null {
   const rawKey =
     process.env.GEMINI_API_KEY ||
@@ -55,10 +130,54 @@ export interface WasteAnalysisResult {
   is_unidentifiable?: boolean;
 }
 
+type GeminiLanguage = 'EN' | 'HI' | 'TE';
+
+function normalizeLanguage(language?: string): GeminiLanguage {
+  return language === 'HI' || language === 'TE' ? language : 'EN';
+}
+
+function languageInstruction(language: GeminiLanguage): string {
+  const selected = language === 'HI' ? 'Hindi (Devanagari)' : language === 'TE' ? 'Telugu script' : 'English';
+  return `The selected app language is ${selected}. Respond in the user's dominant language. Understand and naturally handle mixed Hindi-English or Telugu-English. If the user explicitly asks for another language, follow that request. For structured output, keep JSON property names in English but translate every user-facing string value into the response language.`;
+}
+
+function getUnverifiedAnalysis(language: GeminiLanguage, reason?: string): WasteAnalysisResult {
+  const copy = {
+    EN: {
+      material: 'Mixed Scrap / Unverified Waste', category: 'Mixed Waste', materialType: 'Unclassified Scrap',
+      weight: 'Requires verification at pickup', value: 'Requires material separation / pickup verification', bestFor: 'Kabadiwala / Scrap Collection',
+      disposal: 'Segregate materials into dry/metal/plastic bins or request doorstep inspection.', item: 'Scrap Material',
+      reason: reason || 'AI vision processing failed. Manual verification required.',
+    },
+    HI: {
+      material: 'मिश्रित स्क्रैप / सत्यापन रहित कचरा', category: 'मिश्रित कचरा', materialType: 'अवर्गीकृत स्क्रैप',
+      weight: 'पिकअप के समय सत्यापन आवश्यक', value: 'सामग्री अलग करना / पिकअप सत्यापन आवश्यक', bestFor: 'कबाड़ीवाला / स्क्रैप संग्रह',
+      disposal: 'कचरे को सूखे, धातु और प्लास्टिक डिब्बों में अलग करें या घर पर निरीक्षण का अनुरोध करें।', item: 'स्क्रैप सामग्री',
+      reason: reason || 'AI विज़न प्रक्रिया विफल हुई। मैन्युअल सत्यापन आवश्यक है।',
+    },
+    TE: {
+      material: 'మిశ్రమ స్క్రాప్ / ధృవీకరించని వ్యర్థం', category: 'మిశ్రమ వ్యర్థం', materialType: 'వర్గీకరించని స్క్రాప్',
+      weight: 'పికప్ సమయంలో ధృవీకరణ అవసరం', value: 'పదార్థాలను వేరు చేయడం / పికప్ ధృవీకరణ అవసరం', bestFor: 'కబాడీవాలా / స్క్రాప్ సేకరణ',
+      disposal: 'వ్యర్థాలను పొడి, లోహం మరియు ప్లాస్టిక్ బిన్‌లలో వేరు చేయండి లేదా ఇంటి తనిఖీని అభ్యర్థించండి.', item: 'స్క్రాప్ పదార్థం',
+      reason: reason || 'AI విజన్ ప్రక్రియ విఫలమైంది. మాన్యువల్ ధృవీకరణ అవసరం.',
+    },
+  }[language];
+
+  return {
+    material: copy.material, category: copy.category, material_type: copy.materialType, confidence: 0.5,
+    estimated_weight: null, weight_range_kg: copy.weight, recyclable: true,
+    recyclability_status: 'Requires Separation', best_for: copy.bestFor, estimated_value: null,
+    value_text: copy.value, disposal_instruction: copy.disposal, current_rate_per_kg: null,
+    detected_items: [copy.item], requires_verification: true, reason: copy.reason, is_unidentifiable: false,
+  };
+}
+
 export async function analyzeWasteImage(
   base64Data: string,
-  mimeType: string = 'image/jpeg'
+  mimeType: string = 'image/jpeg',
+  language: GeminiLanguage = 'EN'
 ): Promise<WasteAnalysisResult> {
+  const responseLanguage = normalizeLanguage(language);
   const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, '');
   const ai = getGenAI();
 
@@ -71,31 +190,18 @@ export async function analyzeWasteImage(
   if (!ai) {
     // Graceful unverified result if GEMINI_API_KEY is not configured (NEVER DEFAULT TO PET BOTTLE)
     console.warn('[Gemini] GEMINI_API_KEY not set. Returning unverified inspection result.');
-    return {
-      material: 'Mixed Scrap / Unverified Waste',
-      category: 'Mixed Waste',
-      material_type: 'Unclassified Scrap',
-      confidence: 0.5,
-      estimated_weight: null,
-      weight_range_kg: 'Requires verification at pickup',
-      recyclable: true,
-      recyclability_status: 'Requires Separation',
-      best_for: 'Kabadiwala / Scrap Collection',
-      estimated_value: null,
-      value_text: 'Requires material separation / pickup verification',
-      disposal_instruction:
-        'Segregate materials into dry/metal/plastic bins or request doorstep inspection.',
-      current_rate_per_kg: null,
-      detected_items: ['Scrap Material'],
-      requires_verification: true,
-      reason: 'AI key not configured. Physical inspection required at pickup.',
-      is_unidentifiable: false,
-    };
+    return getUnverifiedAnalysis(responseLanguage, responseLanguage === 'EN'
+      ? 'AI key not configured. Physical inspection required at pickup.'
+      : responseLanguage === 'HI'
+      ? 'AI कुंजी कॉन्फ़िगर नहीं है। पिकअप पर भौतिक निरीक्षण आवश्यक है।'
+      : 'AI కీ కాన్ఫిగర్ కాలేదు. పికప్ సమయంలో భౌతిక తనిఖీ అవసరం.');
   }
 
   try {
     const prompt = `You are EcoScan AI, an expert waste identification and scrap material appraisal vision engine for India.
 Analyze the ENTIRE uploaded image thoroughly before assigning any classification.
+
+  ${languageInstruction(responseLanguage)}
 
 Current scrap mandi benchmark rates in India: [${materialsContext}].
 
@@ -133,8 +239,8 @@ Respond strictly in JSON matching the schema.`;
       },
     };
 
-    const callAiPromise = ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+    const generateImageRequest = () => ai.models.generateContent({
+      model: 'gemini-3.7-flash',
       contents: { parts: [imagePart, { text: prompt }] },
       config: {
         responseMimeType: 'application/json',
@@ -168,11 +274,12 @@ Respond strictly in JSON matching the schema.`;
       },
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Gemini API call timed out after 8 seconds')), 8000)
-    );
-
-    const response = (await Promise.race([callAiPromise, timeoutPromise])) as any;
+    const response = (await withGeminiRetries(() => {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Gemini API call timed out after 8 seconds')), 8000)
+      );
+      return Promise.race([generateImageRequest(), timeoutPromise]);
+    }, responseLanguage)) as any;
 
     const jsonText = response.text || '{}';
     const parsed = JSON.parse(jsonText);
@@ -274,35 +381,28 @@ Respond strictly in JSON matching the schema.`;
       is_unidentifiable: false,
     };
   } catch (error) {
-    console.error('[Gemini] Vision identification error:', error);
+    const temporaryFailure = error instanceof GeminiTemporaryError;
+    console.error('[Gemini] Vision identification error:', {
+      temporary: temporaryFailure,
+      status: getGeminiErrorDetails(error).status,
+    });
     // REMOVE HARDCODED PET BOTTLE FALLBACK. Return unverified mixed scrap result.
-    return {
-      material: 'Mixed Scrap / Unverified Waste',
-      category: 'Mixed Waste',
-      material_type: 'Unclassified Scrap',
-      confidence: 0.5,
-      estimated_weight: null,
-      weight_range_kg: 'Requires verification at pickup',
-      recyclable: true,
-      recyclability_status: 'Requires Separation',
-      best_for: 'Kabadiwala / Scrap Collection',
-      current_rate_per_kg: null,
-      estimated_value: null,
-      value_text: 'Requires material separation / pickup verification',
-      disposal_instruction:
-        'Please segregate materials or schedule doorstep verification with a kabadiwala.',
-      detected_items: ['Mixed Scrap'],
-      requires_verification: true,
-      reason: 'AI vision processing failed. Manual verification required.',
-      is_unidentifiable: false,
-    };
+    return getUnverifiedAnalysis(responseLanguage, temporaryFailure
+      ? responseLanguage === 'EN'
+        ? TEMPORARY_GEMINI_MESSAGE
+        : responseLanguage === 'HI'
+        ? 'EcoAI अभी व्यस्त है। कृपया थोड़ी देर बाद फिर प्रयास करें।'
+        : 'EcoAI ప్రస్తుతం బిజీగా ఉంది. దయచేసి కొద్దిసేపటి తర్వాత ప్రయత్నించండి.'
+      : undefined);
   }
 }
 
 export async function askEcoAiChat(
   userQuestion: string,
-  history?: { role: 'user' | 'model'; text: string }[]
+  history?: { role: 'user' | 'model'; text: string }[],
+  language: GeminiLanguage = 'EN'
 ): Promise<string> {
+  const responseLanguage = normalizeLanguage(language);
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY environment variable is not configured. Please create a .env file in your project root folder and set GEMINI_API_KEY=your_actual_api_key.');
@@ -324,6 +424,8 @@ export async function askEcoAiChat(
       .join(', ');
 
     const systemPrompt = `You are EcoAI, a friendly, warm, intelligent, and highly capable general-purpose conversational AI assistant for EcoScan IN (India's premier waste intelligence, recycling, and scrap material appraisal startup).
+
+  ${languageInstruction(responseLanguage)}
 
 CRITICAL BEHAVIORAL DIRECTIVES:
 1. Conversational AI Capabilities: You are a REAL general-purpose conversational AI assistant. You can converse naturally about anything: greetings (hello, hi, hey, good morning), casual conversation, jokes, general knowledge, math, technology, lifestyle, science, or general questions.
@@ -360,13 +462,16 @@ CRITICAL BEHAVIORAL DIRECTIVES:
       contents.push({ role: 'user', parts: [{ text: userQuestion }] });
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: contents,
-      config: {
-        systemInstruction: systemPrompt,
-      },
-    });
+    const response = await withGeminiRetries(() =>
+      ai.models.generateContent({
+        model: 'gemini-3.7-flash',
+        contents: contents,
+        config: {
+          systemInstruction: systemPrompt,
+        },
+      }),
+      responseLanguage
+    );
 
     const text = response.text?.trim();
     if (!text) {
@@ -374,12 +479,19 @@ CRITICAL BEHAVIORAL DIRECTIVES:
     }
     return text;
   } catch (err: any) {
-    console.error('[Gemini] Chat API error:', err);
+    console.error('[Gemini] Chat API error:', {
+      temporary: err instanceof GeminiTemporaryError,
+      status: getGeminiErrorDetails(err).status,
+    });
     const errMsg = err?.message || String(err);
     const status = err?.status || err?.statusCode;
 
+    if (err instanceof GeminiTemporaryError) {
+      throw new Error(err.message || TEMPORARY_GEMINI_MESSAGE);
+    }
+
     if (errMsg.includes('GEMINI_API_KEY')) {
-      throw err;
+      throw new Error('EcoAI is not configured on the server. Please try again later.');
     }
 
     if (
@@ -390,7 +502,7 @@ CRITICAL BEHAVIORAL DIRECTIVES:
       status === 401 ||
       status === 403
     ) {
-      throw new Error('Gemini API Error: Invalid API key provided. Please check your GEMINI_API_KEY environment variable.');
+      throw new Error('EcoAI authentication is unavailable. Please try again later.');
     }
 
     if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota') || status === 429) {
@@ -406,6 +518,6 @@ CRITICAL BEHAVIORAL DIRECTIVES:
       throw new Error('Gemini API Error: Network failure connecting to Google Gemini API servers. Please check your internet connection.');
     }
 
-    throw new Error(`Gemini API Failure: ${errMsg}`);
+    throw new Error('EcoAI could not process that request. Please try again later.');
   }
 }

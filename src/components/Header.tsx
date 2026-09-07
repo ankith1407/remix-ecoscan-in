@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Language, UserRole } from '../types';
+import { LANGUAGE_OPTIONS, useI18n } from '../i18n';
 
 interface HeaderProps {
   language: Language;
@@ -7,6 +8,7 @@ interface HeaderProps {
   activeRole?: UserRole;
   unreadNotificationCount?: number;
   onToggleLanguage: () => void;
+  onChangeLanguage?: (language: Language) => void;
   onOpenProfile: () => void;
   onOpenNotifications?: () => void;
   onSwitchRole?: (role: UserRole) => void;
@@ -18,19 +20,21 @@ export const Header: React.FC<HeaderProps> = ({
   activeRole = 'user',
   unreadNotificationCount = 0,
   onToggleLanguage,
+  onChangeLanguage,
   onOpenProfile,
   onOpenNotifications,
   onSwitchRole,
 }) => {
+  const { t } = useI18n();
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const initial = userName ? userName[0].toUpperCase() : 'C';
 
   const roleLabel =
     activeRole === 'admin'
-      ? 'Admin Desk'
+      ? t('adminDesk')
       : activeRole === 'collector'
-      ? 'Kabadiwala'
-      : 'Citizen';
+      ? t('collector')
+      : t('citizen');
 
   const roleColor =
     activeRole === 'admin'
@@ -53,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-sans text-xs font-bold text-[#FFFFFF] px-1.5 py-0.5 rounded bg-[#111111]">IN</span>
             </div>
             <span className="text-[9px] uppercase tracking-[0.2em] text-[#65736A] font-semibold -mt-0.5">
-              Waste to Value Platform
+              {t('wasteToValue')}
             </span>
           </div>
         </div>
@@ -64,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setShowRoleMenu((v) => !v)}
             type="button"
             className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1 transition-all ${roleColor}`}
-            title="Switch Workspace Role (Citizen / Collector / Admin)"
+            title={t('switchRole')}
           >
             <span className="material-symbols-outlined text-[13px]">
               {activeRole === 'admin' ? 'admin_panel_settings' : activeRole === 'collector' ? 'local_shipping' : 'person'}
@@ -86,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span className="material-symbols-outlined text-[16px]">person</span>
-                Citizen User
+                {t('citizenUser')}
               </button>
 
               <button
@@ -100,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span className="material-symbols-outlined text-[16px]">local_shipping</span>
-                Kabadiwala Desk
+                {t('kabadiwalaDesk')}
               </button>
 
               <button
@@ -114,7 +118,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
-                Admin Desk
+                {t('adminDesk')}
               </button>
             </div>
           )}
@@ -124,11 +128,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2">
           {onOpenNotifications && (
             <button
-              aria-label="Notifications"
+              aria-label={t('notifications')}
               onClick={onOpenNotifications}
               className="relative h-8 w-8 rounded-full bg-[#FFFFFF] hover:bg-[#E8F3EB] flex items-center justify-center text-[#172019] transition-colors active:scale-95 border border-[#DCE5DE] shadow-xs"
               type="button"
-              title="View Notifications"
+              title={t('notifications')}
             >
               <span className="material-symbols-outlined text-[18px]">notifications</span>
               {unreadNotificationCount > 0 && (
@@ -139,16 +143,16 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          <button
-            aria-label="Change Language"
-            onClick={onToggleLanguage}
-            className="h-8 px-2.5 rounded-full bg-[#FFFFFF] hover:bg-[#E8F3EB] flex items-center justify-center gap-0.5 text-[#172019] transition-colors text-xs font-semibold active:scale-95 border border-[#DCE5DE] shadow-xs"
-            type="button"
+          <select
+            aria-label={t('changeLanguage')}
+            value={language}
+            onChange={(event) => onChangeLanguage?.(event.target.value as Language)}
+            className="h-8 max-w-[92px] rounded-full bg-[#FFFFFF] hover:bg-[#E8F3EB] px-2 text-[#172019] transition-colors text-xs font-semibold border border-[#DCE5DE] shadow-xs"
           >
-            <span className={language === 'EN' ? 'text-[#3FA66B] font-bold' : 'text-[#65736A]'}>EN</span>
-            <span className="text-[#DCE5DE]">/</span>
-            <span className={language === 'HI' ? 'text-[#3FA66B] font-bold' : 'text-[#65736A]'}>हिं</span>
-          </button>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>{option.nativeLabel}</option>
+            ))}
+          </select>
 
           <button
             aria-label="Profile Account and Login Options"

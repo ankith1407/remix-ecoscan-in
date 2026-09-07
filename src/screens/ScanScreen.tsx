@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { useI18n } from '../i18n';
 
 interface ScanScreenProps {
   onAddScanPoint?: (pts: number, stream?: 'dry' | 'wet' | 'hazard' | 'ewaste') => void;
@@ -65,6 +66,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
   onOpenScheduleModal,
   onNavigateToFacilities,
 }) => {
+  const { language, t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mobileCaptureInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -493,7 +495,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
 
     try {
       // Send image to server-side Gemini AI Vision model
-      const aiResult = await api.scanWaste(base64DataUrl, mimeType);
+      const aiResult = await api.scanWaste(base64DataUrl, mimeType, undefined, language);
       const analysis = aiResult?.analysis;
 
       if (!analysis) {
@@ -1093,7 +1095,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
             </button>
 
             <div className="flex flex-col items-center">
-              <h3 className="font-editorial text-lg font-bold text-[#172019] tracking-tight">Scan Result</h3>
+              <h3 className="font-editorial text-lg font-bold text-[#172019] tracking-tight">{t('wasteAnalysis')}</h3>
               <span className="text-[10px] text-[#65736A] font-medium">Gemini AI Waste Appraisal</span>
             </div>
 
@@ -1129,7 +1131,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
                 warning
               </span>
               <div className="flex flex-col gap-1 text-xs">
-                <span className="font-bold text-sm">Unable to confidently identify the waste</span>
+                <span className="font-bold text-sm">{t('unableIdentify')}</span>
                 <span className="leading-relaxed">
                   {currentItem.reason || 'Please upload a clearer, well-lit image of the scrap item.'}
                 </span>
@@ -1202,7 +1204,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
             {/* Row 4: Estimated Price */}
             <div className="py-2.5 flex flex-col gap-0.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#65736A] font-semibold">Estimated Value</span>
+                <span className="text-xs text-[#65736A] font-semibold">{t('estimatedValue')}</span>
                 <span className="font-editorial text-sm sm:text-base font-bold text-[#3FA66B]">
                   {currentItem.valueText
                     ? currentItem.valueText
@@ -1227,7 +1229,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
             {/* Row 6: AI Confidence */}
             <div className="py-2.5 flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#65736A] font-semibold">AI Confidence</span>
+                <span className="text-xs text-[#65736A] font-semibold">{t('confidence')}</span>
                 <span className="text-xs font-bold text-[#3FA66B] font-code-metric">
                   {currentItem.confidence}
                 </span>
@@ -1308,7 +1310,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
               className="w-full h-12 rounded-xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] font-bold text-sm shadow-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[20px]">calendar_month</span>
-              <span>Schedule Pickup</span>
+              <span>{t('schedulePickup')}</span>
             </button>
 
             {/* Secondary: Scan Another */}
@@ -1318,7 +1320,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
               className="w-full h-12 rounded-xl bg-[#FFFFFF] hover:bg-[#F5F8F4] text-[#172019] font-bold text-sm border border-[#DCE5DE] shadow-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[20px]">photo_camera</span>
-              <span>Scan Another</span>
+              <span>{t('scan')}</span>
             </button>
           </div>
         </div>
@@ -1388,7 +1390,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
             <span className="material-symbols-outlined text-4xl text-[#3FA66B] animate-bounce">
               drive_folder_upload
             </span>
-            <p className="text-sm font-bold text-[#FFFFFF]">Drop Your Waste Image Here</p>
+            <p className="text-sm font-bold text-[#FFFFFF]">{t('uploadImage')}</p>
             <p className="text-xs text-[#DCE5DE]">Directly imported from your files</p>
           </div>
         )}
@@ -1402,7 +1404,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
               </span>
             </div>
             <div className="flex flex-col gap-1">
-              <h4 className="text-base font-bold text-[#FFFFFF] tracking-tight">Analyzing Waste...</h4>
+              <h4 className="text-base font-bold text-[#FFFFFF] tracking-tight">{t('analyzing')}</h4>
               <p className="text-xs text-[#DCE5DE] max-w-xs leading-relaxed">
                 Gemini AI Vision is evaluating material properties, recyclability & live mandi rates
               </p>

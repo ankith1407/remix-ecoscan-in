@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScreenType } from '../types';
+import { useI18n } from '../i18n';
 
 interface NavigationProps {
   currentScreen: ScreenType;
@@ -10,6 +11,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   currentScreen,
   onSelectScreen,
 }) => {
+  const { t } = useI18n();
   return (
     <nav className="fixed bottom-0 w-full z-50 pb-safe pointer-events-none">
       <div className="max-w-lg mx-auto px-4 mb-2.5 pointer-events-auto">
@@ -29,7 +31,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <span className="material-symbols-outlined text-[21px] group-hover:scale-110 transition-transform">
                 monitoring
               </span>
-              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">Dashboard</span>
+              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">{t('dashboard')}</span>
             </button>
 
             {/* 2. Facilities */}
@@ -46,14 +48,14 @@ export const Navigation: React.FC<NavigationProps> = ({
               <span className="material-symbols-outlined text-[21px] group-hover:scale-110 transition-transform">
                 storefront
               </span>
-              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">Facilities</span>
+              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">{t('facilities')}</span>
             </button>
 
             {/* 3. Central AI Scanner Trigger */}
             <div className="flex-1 flex justify-center -translate-y-3">
               <button
                 onClick={() => onSelectScreen('scan')}
-                aria-label="Scan Waste with AI"
+                aria-label={t('scanWaste')}
                 className={`w-12 h-12 rounded-full bg-[#3FA66B] flex items-center justify-center shadow-[0_4px_20px_rgba(63,166,107,0.35)] text-[#FFFFFF] transition-transform active:scale-90 hover:brightness-105 border border-[#3FA66B] ${
                   currentScreen === 'scan' ? 'ring-4 ring-[#3FA66B]/30 scale-105' : ''
                 }`}
@@ -79,7 +81,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <span className="material-symbols-outlined text-[21px] group-hover:scale-110 transition-transform">
                 account_balance_wallet
               </span>
-              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">Rewards</span>
+              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">{t('rewards')}</span>
             </button>
 
             {/* 5. Guide */}
@@ -96,7 +98,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <span className="material-symbols-outlined text-[21px] group-hover:scale-110 transition-transform">
                 delete_sweep
               </span>
-              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">Guide</span>
+              <span className="text-[10px] mt-0.5 tracking-tight font-semibold">{t('guide')}</span>
             </button>
           </div>
         </div>

@@ -2,7 +2,7 @@ export type ScreenType = 'dashboard' | 'facilities' | 'scan' | 'rewards' | 'guid
 
 export type UserRole = 'user' | 'collector' | 'admin';
 
-export type Language = 'EN' | 'HI';
+export type Language = 'EN' | 'HI' | 'TE';
 
 export type AuthScreenMode = 'welcome' | 'login' | 'register';
 

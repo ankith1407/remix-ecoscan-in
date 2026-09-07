@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { SEGREGATION_DATABASE } from '../data/mockData';
 import { ScreenType } from '../types';
+import { useI18n } from '../i18n';
 
 interface GuideScreenProps {
   onNavigateToScan: () => void;
 }
 
 export const GuideScreen: React.FC<GuideScreenProps> = ({ onNavigateToScan }) => {
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [showBlueprint, setShowBlueprint] = useState(false);
   const [expandedBins, setExpandedBins] = useState<{ [key: string]: boolean }>({
@@ -45,7 +47,7 @@ export const GuideScreen: React.FC<GuideScreenProps> = ({ onNavigateToScan }) =>
           </div>
 
           <h2 className="font-editorial italic text-xl font-bold text-[#172019] tracking-tight">
-            4-Bin Segregation Guide
+            4-Bin Segregation Guide • {t('guide')}
           </h2>
           <p className="text-xs text-[#65736A] leading-relaxed font-sans">
             Official Indian municipal norms. Segregate at source to enable zero-landfill smart recovery.

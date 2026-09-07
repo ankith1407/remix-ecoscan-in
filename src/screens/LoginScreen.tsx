@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { AuthUser } from '../types';
+import { LanguageSelector } from '../components/LanguageSelector';
+import { useI18n } from '../i18n';
+import { api } from '../services/api';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: AuthUser) => void;
@@ -12,6 +15,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onNavigateToRegister,
   onBackToWelcome,
 }) => {
+  const { t } = useI18n();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,7 +36,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setErrorMessage('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -47,38 +51,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     if (loginMethod === 'otp') {
-      if (!otpSent) {
-        setErrorMessage('Please request an OTP first.');
-        return;
-      }
-      if (otpCode !== simulatedOtp && otpCode !== '123456') {
-        setErrorMessage('Invalid OTP entered. Try clicking Auto-fill or enter the code shown.');
-        return;
-      }
+      setErrorMessage('OTP login is unavailable until a verified SMS provider is configured. Please use password login.');
+      return;
     }
 
-    // Determine if identifier is email or phone
-    const isEmail = identifier.includes('@');
-    const user: AuthUser = {
-      id: 'usr_' + Date.now(),
-      name: isEmail ? identifier.split('@')[0] : 'Eco Citizen',
-      email: isEmail ? identifier : 'user@ecoscan.in',
-      phoneNumber: !isEmail ? identifier : '+91 98765 43210',
-      createdAt: new Date().toISOString(),
-    };
-
-    onLoginSuccess(user);
-  };
-
-  const handleQuickDemoLogin = () => {
-    const demoUser: AuthUser = {
-      id: 'usr_demo_1',
-      name: 'Aditi Rao',
-      email: 'aditi.rao@gmail.com',
-      phoneNumber: '+91 98450 12345',
-      createdAt: new Date().toISOString(),
-    };
-    onLoginSuccess(demoUser);
+    try {
+      const user = await api.login(identifier.includes('@') ? identifier : undefined, identifier.includes('@') ? undefined : identifier, password);
+      onLoginSuccess(user);
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Unable to sign in. Please check your credentials.');
+    }
   };
 
   return (
@@ -101,7 +83,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <span className="font-editorial italic font-bold text-base text-[#172019]">EcoScan IN</span>
         </div>
 
-        <div className="w-9"></div>
+        <LanguageSelector />
       </div>
 
       {/* Main Form Container */}
@@ -110,13 +92,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {/* Decorative badge */}
           <div className="flex items-center justify-between mb-4">
             <span className="text-[10px] uppercase font-bold tracking-widest text-[#174D35] bg-[#E8F3EB] px-2.5 py-1 rounded-full border border-[#DCE5DE]">
-              Citizen Portal
+              {t('citizen')}
             </span>
-            <span className="text-xs text-[#65736A]">Secure Login</span>
+            <span className="text-xs text-[#65736A]">{t('profile')}</span>
           </div>
 
           <h2 className="font-editorial italic text-2xl font-bold text-[#172019] tracking-tight mb-1">
-            Welcome Back
+            {t('welcomeBack')}
           </h2>
           <p className="text-xs text-[#65736A] mb-5">
             Sign in to track your green credits, scrap collections, and certificates.
@@ -136,7 +118,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               }`}
               type="button"
             >
-              Password
+              {t('password')}
             </button>
             <button
               onClick={() => {
@@ -150,7 +132,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               }`}
               type="button"
             >
-              One-Time OTP
+              {t('otp')}
             </button>
           </div>
 
@@ -167,7 +149,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {/* Identifier (Email / Phone) */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-[#172019] flex items-center justify-between">
-                <span>Email or Mobile Number</span>
+                <span>{t('emailMobile')}</span>
                 <span className="text-[10px] text-[#65736A] font-normal">e.g. aditi@gmail.com</span>
               </label>
               <div className="relative flex items-center">
@@ -178,7 +160,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Enter email or 10-digit mobile"
+                  placeholder={t('enterEmailMobile')}
                   className="w-full h-11 pl-10 pr-4 bg-[#FFFFFF] text-[#172019] placeholder:text-[#65736A]/60 text-xs rounded-xl outline-none focus:ring-1 focus:ring-[#3FA66B] border border-[#DCE5DE]"
                 />
               </div>
@@ -188,7 +170,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {loginMethod === 'password' && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-[#172019]">Password</label>
+                  <label className="text-xs font-semibold text-[#172019]">{t('password')}</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -197,7 +179,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     }}
                     className="text-[11px] text-[#3FA66B] font-bold hover:underline"
                   >
-                    Forgot? Use OTP
+                    {t('forgotUseOtp')}
                   </button>
                 </div>
                 <div className="relative flex items-center">
@@ -208,7 +190,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter account password"
+                    placeholder={t('enterPassword')}
                     className="w-full h-11 pl-10 pr-10 bg-[#FFFFFF] text-[#172019] placeholder:text-[#65736A]/60 text-xs rounded-xl outline-none focus:ring-1 focus:ring-[#3FA66B] border border-[#DCE5DE]"
                   />
                   <button
@@ -228,7 +210,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {loginMethod === 'otp' && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[#172019]">Verification Code</span>
+                  <span className="text-xs font-semibold text-[#172019]">{t('verificationCode')}</span>
                   {!otpSent ? (
                     <button
                       type="button"
@@ -236,7 +218,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       className="text-xs font-bold text-[#3FA66B] hover:underline flex items-center gap-1"
                     >
                       <span className="material-symbols-outlined text-[15px]">send_to_mobile</span>
-                      <span>Send OTP</span>
+                      <span>{t('sendOtp')}</span>
                     </button>
                   ) : (
                     <button
@@ -244,7 +226,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       onClick={handleSendOtp}
                       className="text-[11px] text-[#65736A] hover:text-[#3FA66B]"
                     >
-                      Resend OTP
+                      {t('resendOtp')}
                     </button>
                   )}
                 </div>
@@ -292,22 +274,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               type="submit"
               className="w-full h-12 rounded-xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] font-bold text-sm shadow-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
             >
-              <span>Sign In</span>
+              <span>{t('signIn')}</span>
               <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
             </button>
           </form>
 
-          {/* Quick Demo Login Option */}
-          <div className="mt-4 pt-4 border-t border-[#DCE5DE] flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              className="w-full py-2.5 px-3 rounded-xl bg-[#F5F8F4] hover:bg-[#E8F3EB] text-[#172019] text-xs font-bold border border-[#DCE5DE] transition-colors flex items-center justify-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[16px] text-[#3FA66B]">bolt</span>
-              <span>1-Tap Demo Login (Aditi Rao)</span>
-            </button>
-          </div>
         </div>
 
         {/* Switch to Register link */}

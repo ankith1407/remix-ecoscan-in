@@ -2,8 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'ecoscan-super-secret-jwt-key-2026-production-ready';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'ecoscan-super-secret-refresh-key-2026-production-ready';
+function getJwtSecret(name: 'JWT_SECRET' | 'JWT_REFRESH_SECRET'): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
 
 export interface AuthPayload {
   id: string;
@@ -28,22 +30,39 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function generateTokens(payload: AuthPayload) {
-  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
-  const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' });
+  const accessSecret = getJwtSecret('JWT_SECRET');
+  const refreshSecret = getJwtSecret('JWT_REFRESH_SECRET');
+  if (!accessSecret || !refreshSecret) {
+    throw new Error('Authentication is not configured on the server.');
+  }
+  const accessToken = jwt.sign(payload, accessSecret, { expiresIn: '15m', algorithm: 'HS256' });
+  const refreshToken = jwt.sign(payload, refreshSecret, { expiresIn: '7d', algorithm: 'HS256' });
   return { accessToken, refreshToken };
 }
 
 export function verifyAccessToken(token: string): AuthPayload | null {
+  const secret = getJwtSecret('JWT_SECRET');
+  if (!secret) return null;
   try {
-    return jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = jwt.verify(token, secret, { algorithms: ['HS256'] });
+    if (!payload || typeof payload === 'string') return null;
+    if (typeof payload.id !== 'string' || typeof payload.email !== 'string') return null;
+    if (!['user', 'collector', 'admin'].includes(payload.role as string)) return null;
+    return payload as AuthPayload;
   } catch {
     return null;
   }
 }
 
 export function verifyRefreshToken(token: string): AuthPayload | null {
+  const secret = getJwtSecret('JWT_REFRESH_SECRET');
+  if (!secret) return null;
   try {
-    return jwt.verify(token, JWT_REFRESH_SECRET) as AuthPayload;
+    const payload = jwt.verify(token, secret, { algorithms: ['HS256'] });
+    if (!payload || typeof payload === 'string') return null;
+    if (typeof payload.id !== 'string' || typeof payload.email !== 'string') return null;
+    if (!['user', 'collector', 'admin'].includes(payload.role as string)) return null;
+    return payload as AuthPayload;
   } catch {
     return null;
   }

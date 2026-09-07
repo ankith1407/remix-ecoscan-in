@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
+import { useI18n } from '../i18n';
 
 interface GeminiDrawerProps {
   isOpen: boolean;
@@ -18,11 +19,12 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
   onClose,
   onOpen,
 }) => {
+  const { language, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'm-1',
       sender: 'ecoai',
-      text: 'Namaste! I am EcoAi, your personal waste intelligence & scrap valuation chatbot. Point your camera at any mixed trash, milk pouch, scrap metal, or battery. I will instantly classify it into BBMP/CPCB 4-bin rules and connect you to local Kabadiwalas.',
+      text: t('ecoAiGreeting'),
     },
   ]);
   const [inputText, setInputText] = useState('');
@@ -57,7 +59,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
     setIsTyping(true);
 
     try {
-      const res = await api.askEcoAi(query, historyPayload);
+      const res = await api.askEcoAi(query, historyPayload, language);
       const botMsg: Message = {
         id: `g-${Date.now()}`,
         sender: 'ecoai',
@@ -68,7 +70,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
       const botMsg: Message = {
         id: `g-${Date.now()}`,
         sender: 'ecoai',
-        text: `⚠️ EcoAi Error: ${err.message || 'Unable to process your request at this time.'}`,
+        text: err.message || t('networkError'),
       };
       setMessages((prev) => [...prev, botMsg]);
     } finally {
@@ -136,7 +138,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
                       : 'bg-[#3FA66B] text-[#FFFFFF] font-semibold ml-8 self-end'
                   }`}
                 >
-                  {m.text}
+                  {m.id === 'm-1' ? t('ecoAiGreeting') : m.text}
                 </div>
               ))}
               {isTyping && (

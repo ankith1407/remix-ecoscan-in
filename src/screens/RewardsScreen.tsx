@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DbRewardItem, DbRewardRedemption, UserEcoProfile, DbEcoTxItem, DbPartner } from '../types';
 import { api } from '../services/api';
+import { useI18n } from '../i18n';
 
 interface RewardsScreenProps {
   userProfile?: UserEcoProfile;
@@ -15,6 +16,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
   onOpenCertificate,
   onOpenPartnerDashboard,
 }) => {
+  const { t } = useI18n();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [dbRewards, setDbRewards] = useState<DbRewardItem[]>([]);
   const [dbPartners, setDbPartners] = useState<DbPartner[]>([]);
@@ -194,7 +196,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
               </span>
               <div className="font-editorial text-3xl font-bold text-[#172019] mt-0.5 flex items-baseline gap-1.5">
                 {effectivePoints}
-                <span className="font-sans text-xs font-semibold text-[#3FA66B]">Eco Credits</span>
+                <span className="font-sans text-xs font-semibold text-[#3FA66B]">{t('ecoCredits')}</span>
               </div>
             </div>
 
@@ -206,7 +208,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                 title="View Credit History"
               >
                 <span className="material-symbols-outlined text-[17px] text-[#3FA66B]">history</span>
-                <span>History</span>
+                <span>{t('recent')}</span>
               </button>
 
               <button
@@ -215,7 +217,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                 type="button"
               >
                 <span className="material-symbols-outlined text-[17px]">workspace_premium</span>
-                <span>Certificate</span>
+                <span>{t('certificate')}</span>
               </button>
             </div>
           </div>
@@ -258,7 +260,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
               <div className="w-12 h-12 rounded-full bg-[#E8F3EB] border border-[#DCE5DE] flex items-center justify-center text-[#3FA66B]">
                 <span className="material-symbols-outlined text-[24px]">receipt_long</span>
               </div>
-              <h3 className="text-sm font-bold text-[#172019]">No Claimed Vouchers Yet</h3>
+              <h3 className="text-sm font-bold text-[#172019]">{t('available')}</h3>
               <p className="text-xs text-[#65736A] max-w-xs">
                 You haven&apos;t redeemed any vouchers yet. Complete doorstep waste pickups to earn Eco Credits and redeem partner vouchers!
               </p>
@@ -333,7 +335,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center gap-2 text-xs text-[#65736A]">
               <span className="w-6 h-6 border-2 border-[#3FA66B] border-t-transparent rounded-full animate-spin"></span>
-              <span>Loading rewards...</span>
+                <span>{t('ecoCredits')}...</span>
             </div>
           ) : error ? (
             <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center justify-center text-center gap-3 shadow-xs">

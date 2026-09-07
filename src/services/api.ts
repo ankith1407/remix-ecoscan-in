@@ -16,6 +16,20 @@ import {
   LiveCollectorLocation,
 } from '../types';
 
+async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = localStorage.getItem('ecoscan_jwt_token');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await globalThis.fetch(input, { ...init, headers, credentials: 'same-origin' });
+  if (response.status === 401) {
+    localStorage.removeItem('ecoscan_jwt_token');
+  }
+  return response;
+}
+
+const fetch = authenticatedFetch;
+
 export interface WasteScanResponse {
   scan: {
     id: string;
@@ -57,6 +71,13 @@ export interface WasteScanResponse {
 
 export const api = {
   // Users & Auth
+  async getCurrentUser(): Promise<AuthUser> {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) throw new Error('Session expired');
+    const user = await res.json();
+    return { ...user, phoneNumber: user.phoneNumber || user.phone, createdAt: user.createdAt || user.created_at };
+  },
+
   async getUsers(): Promise<AuthUser[]> {
     const res = await fetch('/api/users');
     if (!res.ok) throw new Error('Failed to fetch users');
@@ -64,17 +85,21 @@ export const api = {
   },
 
   async login(email?: string, phone?: string, password?: string): Promise<AuthUser> {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, phone, password }),
-    });
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, phone, password }),
+      });
+    } catch {
+      throw new Error('Unable to connect to EcoScan. Please start the server and try again.');
+    }
     if (!res.ok) throw new Error('Login failed');
     const data = await res.json();
-    if (data.token) {
-      localStorage.setItem('ecoscan_jwt_token', data.token);
-    }
-    return data.user || data;
+    if (!data.user) throw new Error('Login response did not include a user session');
+    // Confirm the HttpOnly cookie was accepted before the UI enters the dashboard.
+    return this.getCurrentUser();
   },
 
   async register(data: {
@@ -92,10 +117,8 @@ export const api = {
     });
     if (!res.ok) throw new Error('Registration failed');
     const resData = await res.json();
-    if (resData.token) {
-      localStorage.setItem('ecoscan_jwt_token', resData.token);
-    }
-    return resData.user || resData;
+    if (!resData.user) throw new Error('Registration response did not include a user session');
+    return this.getCurrentUser();
   },
 
   async getUserAddresses(userId: string): Promise<Array<{
@@ -138,6 +161,11 @@ export const api = {
     return res.json();
   },
 
+  async logout(): Promise<void> {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    localStorage.removeItem('ecoscan_jwt_token');
+  },
+
   // Waste Materials & Dynamic Prices
   async getMaterials(): Promise<DbWasteMaterialItem[]> {
     const res = await fetch('/api/materials');
@@ -172,7 +200,8 @@ export const api = {
   async scanWaste(
     imageBase64: string,
     mimeType: string = 'image/jpeg',
-    userId?: string
+    userId?: string,
+    language: 'EN' | 'HI' | 'TE' = 'EN'
   ): Promise<WasteScanResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
@@ -181,7 +210,7 @@ export const api = {
       const res = await fetch('/api/waste/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageBase64, mimeType, userId }),
+        body: JSON.stringify({ image: imageBase64, mimeType, userId, language }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -260,6 +289,8 @@ export const api = {
     pickup_address: string;
     preferred_date: string;
     preferred_time: string;
+    latitude: number;
+    longitude: number;
   }): Promise<DbPickupItem> {
     const res = await fetch('/api/pickups', {
       method: 'POST',
@@ -586,12 +617,13 @@ export const api = {
   // EcoAi Chatbot
   async askEcoAi(
     question: string,
-    history?: { role: 'user' | 'model'; text: string }[]
+    history?: { role: 'user' | 'model'; text: string }[],
+    language: 'EN' | 'HI' | 'TE' = 'EN'
   ): Promise<string> {
     const res = await fetch('/api/gemini/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, language }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to get answer from EcoAi' }));

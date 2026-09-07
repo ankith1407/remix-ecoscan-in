@@ -10,6 +10,7 @@ import {
   DbUserActivity,
 } from '../types';
 import { ScrapRateTicker } from '../components/ScrapRateTicker';
+import { useI18n } from '../i18n';
 
 interface DashboardScreenProps {
   rates: ScrapRate[];
@@ -42,6 +43,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onNavigate,
   onSelectMission,
 }) => {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col w-full max-w-lg mx-auto px-4 gap-4 pt-1 pb-16 text-[#172019]">
       {/* 1. Scrap Rates Ticker Ribbon */}
@@ -71,7 +73,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               title="Click to view Account, Login or Register options"
             >
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                Good morning 👋
+                {t('goodMorning')} 👋
               </span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="font-editorial italic text-xl font-bold text-[#FFFFFF] group-hover:text-[#3FA66B] transition-colors">
@@ -103,7 +105,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <span className="material-symbols-outlined text-[#3FA66B] text-[15px]">
                   manage_accounts
                 </span>
-                <span className="hidden xs:inline">Account</span>
+                <span className="hidden xs:inline">{t('account')}</span>
               </button>
             )}
 
@@ -115,7 +117,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               <span className="material-symbols-outlined text-[16px]">
                 workspace_premium
               </span>
-              <span>Certificate</span>
+              <span>{t('certificate')}</span>
             </button>
           </div>
         </div>
@@ -249,7 +251,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       {/* 4. Real-Time Impact Metrics 2x2 Grid */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs uppercase tracking-widest text-[#174D35] font-bold">Real-Time Impact</h3>
+          <h3 className="text-xs uppercase tracking-widest text-[#174D35] font-bold">{t('dashboard')} • Real-Time Impact</h3>
           <span className="font-editorial italic text-xs text-[#65736A]">
             {impactMetrics.lastUpdated}
           </span>

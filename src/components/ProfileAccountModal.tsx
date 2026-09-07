@@ -1,5 +1,6 @@
 import React from 'react';
 import { UserEcoProfile, AuthUser } from '../types';
+import { useI18n } from '../i18n';
 
 interface ProfileAccountModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export const ProfileAccountModal: React.FC<ProfileAccountModalProps> = ({
   onOpenCertificate,
   onSignOut,
 }) => {
+  const { t } = useI18n();
   if (!isOpen) return null;
 
   // Derive initials for avatar
@@ -53,7 +55,7 @@ export const ProfileAccountModal: React.FC<ProfileAccountModalProps> = ({
         <div className="flex items-center justify-between pb-2 border-b border-[#DCE5DE]">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[#3FA66B] text-[20px]">manage_accounts</span>
-            <h3 className="font-editorial italic font-bold text-lg text-[#172019]">User Account & Profile</h3>
+            <h3 className="font-editorial italic font-bold text-lg text-[#172019]">{t('profile')}</h3>
           </div>
           <button
             onClick={onClose}
@@ -92,15 +94,15 @@ export const ProfileAccountModal: React.FC<ProfileAccountModalProps> = ({
           {/* Citizen badges summary */}
           <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#DCE5DE] text-center">
             <div className="p-1.5 bg-[#FFFFFF] rounded-lg border border-[#DCE5DE]">
-              <span className="text-[9px] uppercase tracking-wider text-[#65736A] block font-bold">Level</span>
+              <span className="text-[9px] uppercase tracking-wider text-[#65736A] block font-bold">{t('level')}</span>
               <span className="text-xs font-bold text-[#172019]">Lvl {currentUser.level}</span>
             </div>
             <div className="p-1.5 bg-[#FFFFFF] rounded-lg border border-[#DCE5DE]">
-              <span className="text-[9px] uppercase tracking-wider text-[#65736A] block font-bold">Eco Score</span>
+              <span className="text-[9px] uppercase tracking-wider text-[#65736A] block font-bold">{t('ecoScore')}</span>
               <span className="text-xs font-bold text-[#3FA66B] font-code-metric">{currentUser.ecoScore}/100</span>
             </div>
             <div className="p-1.5 bg-[#FFFFFF] rounded-lg border border-[#DCE5DE]">
-              <span className="text-[9px] uppercase tracking-wider text-[#65736A] block font-bold">Credits</span>
+              <span className="text-[9px] uppercase tracking-wider text-[#65736A] block font-bold">{t('credits')}</span>
               <span className="text-xs font-bold text-[#174D35] font-code-metric">{currentUser.points} pts</span>
             </div>
           </div>
@@ -125,7 +127,7 @@ export const ProfileAccountModal: React.FC<ProfileAccountModalProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">person</span>
-              <span>Citizen</span>
+              <span>{t('citizen')}</span>
             </button>
 
             <button
@@ -141,7 +143,7 @@ export const ProfileAccountModal: React.FC<ProfileAccountModalProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">local_shipping</span>
-              <span>Collector</span>
+              <span>{t('collector')}</span>
             </button>
 
             <button
@@ -157,7 +159,7 @@ export const ProfileAccountModal: React.FC<ProfileAccountModalProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
-              <span>Admin</span>
+              <span>{t('admin')}</span>
             </button>
           </div>
         </div>

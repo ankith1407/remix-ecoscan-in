@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { DbNotification } from '../types';
+import { useI18n } from '../i18n';
 
 interface NotificationCenterModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   onSelectPickup,
   onOpenActivityHistory,
 }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('unread');
 
   if (!isOpen) return null;
@@ -79,7 +81,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               <span className="material-symbols-outlined text-[20px]">notifications_active</span>
             </div>
             <div>
-              <h3 className="font-bold text-[#172019] text-base leading-tight">Notifications</h3>
+              <h3 className="font-bold text-[#172019] text-base leading-tight">{t('notifications')}</h3>
               <p className="text-xs text-[#65736A] font-medium">
                 {unreadCount > 0 ? `${unreadCount} unread update${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
               </p>
@@ -124,7 +126,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className="text-xs font-bold text-[#3FA66B] hover:text-[#2d7d50] flex items-center gap-1 transition-colors"
             >
               <span className="material-symbols-outlined text-[15px]">done_all</span>
-              Mark all read
+              {t('markAllRead')}
             </button>
           )}
         </div>
@@ -136,7 +138,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               <div className="w-14 h-14 rounded-full bg-[#E8F3EB] text-[#3FA66B] flex items-center justify-center mb-3">
                 <span className="material-symbols-outlined text-3xl">notifications_off</span>
               </div>
-              <p className="font-semibold text-gray-700 text-sm">No notifications found</p>
+              <p className="font-semibold text-gray-700 text-sm">{t('noNotifications')}</p>
               <p className="text-xs text-gray-500 mt-1 max-w-[220px]">
                 {activeTab === 'unread'
                   ? "You don't have any unread updates right now."

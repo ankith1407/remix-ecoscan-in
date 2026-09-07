@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AuthUser } from '../types';
+import { LanguageSelector } from '../components/LanguageSelector';
+import { useI18n } from '../i18n';
+import { api } from '../services/api';
 
 interface RegisterScreenProps {
   onRegisterSuccess: (user: AuthUser) => void;
@@ -12,9 +15,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   onNavigateToLogin,
   onBackToWelcome,
 }) => {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
   const [otpSent, setOtpSent] = useState(false);
@@ -67,7 +72,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -97,25 +102,29 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       return;
     }
 
+    if (password.length < 12) {
+      setErrorMessage('Please choose a password with at least 12 characters.');
+      return;
+    }
+
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const newUser: AuthUser = {
-        id: 'usr_' + Date.now(),
-        name: name.trim(),
-        email: email.trim(),
-        phoneNumber: phoneNumber.startsWith('+91') ? phoneNumber.trim() : `+91 ${phoneNumber.trim()}`,
-        createdAt: new Date().toISOString(),
-      };
-
+    try {
+      const newUser = await api.register({
+        name: name.trim(), email: email.trim(), phone: phoneNumber.trim(), password,
+      });
       onRegisterSuccess(newUser);
-    }, 500);
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#F5F8F4] text-[#172019] flex flex-col justify-between selection:bg-[#3FA66B] selection:text-[#FFFFFF] px-4 py-6">
       {/* Top Header */}
       <div className="w-full max-w-md mx-auto flex items-center justify-between pb-3">
+        <LanguageSelector />
         <button
           onClick={onNavigateToLogin}
           className="w-9 h-9 rounded-full bg-[#FFFFFF] border border-[#DCE5DE] flex items-center justify-center text-[#65736A] hover:text-[#172019] transition-colors shadow-xs"
@@ -137,7 +146,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           className="text-xs text-[#65736A] hover:text-[#3FA66B] font-medium"
           type="button"
         >
-          Cancel
+          {t('cancel')}
         </button>
       </div>
 
@@ -147,13 +156,13 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] uppercase font-bold tracking-widest text-[#174D35] bg-[#E8F3EB] px-2.5 py-1 rounded-full border border-[#DCE5DE]">
-              Citizen Onboarding
+              {t('citizen')}
             </span>
             <span className="text-xs text-[#65736A]">Step 1 of 1</span>
           </div>
 
           <h2 className="font-editorial italic text-2xl font-bold text-[#172019] tracking-tight mb-1">
-            Create New Account
+            {t('createNewAccount')}
           </h2>
           <p className="text-xs text-[#65736A] mb-5">
             Register to claim your official Green Citizen Certificate & earn rewards for segregated scrap.
@@ -171,7 +180,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             {/* 1. Full Name */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-[#172019]">
-                Full Name <span className="text-[#3FA66B]">*</span>
+                {t('fullName')} <span className="text-[#3FA66B]">*</span>
               </label>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3.5 text-[#65736A] text-[18px]">
@@ -191,7 +200,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             {/* 2. Email Address */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-[#172019]">
-                Email Address <span className="text-[#3FA66B]">*</span>
+                {t('emailAddress')} <span className="text-[#3FA66B]">*</span>
               </label>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3.5 text-[#65736A] text-[18px]">
@@ -211,7 +220,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             {/* 3. Phone Number */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-[#172019]">
-                Mobile Number <span className="text-[#3FA66B]">*</span>
+                {t('mobileNumber')} <span className="text-[#3FA66B]">*</span>
               </label>
               <div className="flex gap-2">
                 <div className="h-11 px-3 bg-[#F5F8F4] border border-[#DCE5DE] rounded-xl flex items-center gap-1 text-xs text-[#65736A] font-code-metric shrink-0">
@@ -245,7 +254,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             <div className="flex flex-col gap-1.5 pt-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-[#172019]">
-                  One-Time Password (OTP) <span className="text-[#3FA66B]">*</span>
+                  {t('otp')} <span className="text-[#3FA66B]">*</span>
                 </label>
                 {otpSent && (
                   <button
@@ -301,6 +310,19 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               </div>
             </div>
 
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[#172019]">Password</label>
+              <input
+                type="password"
+                required
+                minLength={12}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 12 characters"
+                className="w-full h-11 px-3.5 bg-[#FFFFFF] text-[#172019] placeholder:text-[#65736A]/60 text-xs rounded-xl outline-none focus:ring-1 focus:ring-[#3FA66B] border border-[#DCE5DE]"
+              />
+            </div>
+
             {/* Submit: Create Account */}
             <button
               type="submit"
@@ -308,11 +330,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               className="w-full h-12 rounded-xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] font-bold text-sm shadow-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-3 cursor-pointer disabled:opacity-50"
             >
               {isSubmitting ? (
-                <span>Creating Eco Profile...</span>
+                <span>{t('creatingProfile')}</span>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[20px]">check_circle</span>
-                  <span>Verify OTP & Create Account</span>
+                  <span>{t('verifyCreate')}</span>
                 </>
               )}
             </button>

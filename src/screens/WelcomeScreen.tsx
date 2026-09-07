@@ -1,4 +1,6 @@
 import React from 'react';
+import { LanguageSelector } from '../components/LanguageSelector';
+import { useI18n } from '../i18n';
 
 interface WelcomeScreenProps {
   onGetStarted: () => void;
@@ -11,6 +13,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onCreateAccount,
   onContinueAsGuest,
 }) => {
+  const { t } = useI18n();
   return (
     <div className="min-h-screen bg-[#F5F8F4] text-[#172019] flex flex-col justify-between selection:bg-[#3FA66B] selection:text-[#FFFFFF] relative overflow-hidden">
       {/* Background ambient lighting */}
@@ -23,12 +26,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <span className="w-1.5 h-1.5 rounded-full bg-[#3FA66B] animate-pulse"></span>
           <span>MoHUA & CPCB Certified</span>
         </div>
+        <LanguageSelector />
         <button
           onClick={onContinueAsGuest}
           className="text-xs text-[#65736A] hover:text-[#3FA66B] transition-colors font-semibold underline underline-offset-4"
           type="button"
         >
-          Explore as Guest
+          {t('exploreGuest')}
         </button>
       </header>
 
@@ -101,7 +105,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             className="w-full h-14 rounded-2xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] font-bold text-base shadow-[0_8px_24px_rgba(63,166,107,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer"
             type="button"
           >
-            <span>Get Started</span>
+            <span>{t('getStarted')}</span>
             <span className="material-symbols-outlined text-[22px] transition-transform group-hover:translate-x-1">
               arrow_forward
             </span>
@@ -113,7 +117,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             type="button"
           >
             <span className="material-symbols-outlined text-[18px] text-[#3FA66B]">person_add</span>
-            <span>New Citizen? Create New Account</span>
+            <span>{t('createAccount')}</span>
           </button>
         </div>
       </main>
