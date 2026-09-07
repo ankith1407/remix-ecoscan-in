@@ -1,0 +1,318 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                   String            @id @default(cuid())
+  name                 String
+  email                String            @unique
+  phone                String            @unique
+  passwordHash         String?
+  profileImage         String?
+  role                 String            @default("user") // user, collector, admin
+  ecoCredits           Int               @default(0)
+  totalWasteRecycled   Float             @default(0)
+  totalEarnings        Float             @default(0)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  addresses            Address[]
+  pickups              PickupRequest[]   @relation("UserPickups")
+  scans                WasteScan[]
+  activities           UserActivity[]
+  notifications        Notification[]
+  payments             Payment[]         @relation("UserPayments")
+  ecoTransactions      EcoTransaction[]
+  redemptions          RewardRedemption[]
+  ratingsGiven         PickupRating[]    @relation("UserRatings")
+  collectorProfile     Collector?
+  sessions             UserSession[]
+}
+
+model Address {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label                String            @default("Home")
+  fullAddress          String
+  landmark             String?
+  pincode              String            @default("560038")
+  city                 String            @default("Bengaluru")
+  state                String            @default("Karnataka")
+  latitude             Float             @default(12.9716)
+  longitude            Float             @default(77.6412)
+  isDefault            Boolean           @default(true)
+  createdAt            DateTime          @default(now())
+
+  pickups              PickupRequest[]
+}
+
+model Collector {
+  id                   String            @id @default(cuid())
+  userId               String            @unique
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName         String
+  phone                String
+  verificationStatus   String            @default("PENDING") // PENDING, VERIFIED, REJECTED, SUSPENDED
+  serviceArea          String
+  latitude             Float             @default(12.9716)
+  longitude            Float             @default(77.6412)
+  available            Boolean           @default(true)
+  rating               Float             @default(5.0)
+  totalPickups         Int               @default(0)
+  totalEarnings        Float             @default(0)
+  createdAt            DateTime          @default(now())
+
+  assignedPickups      PickupRequest[]   @relation("CollectorPickups")
+  locations            PickupLocation[]
+  payments             Payment[]         @relation("CollectorPayments")
+  ratingsReceived      PickupRating[]    @relation("CollectorRatings")
+}
+
+model WasteMaterial {
+  id                   String            @id @default(cuid())
+  materialName         String            @unique
+  category             String
+  currentPricePerKg    Float
+  unit                 String            @default("₹/kg")
+  recyclable           Boolean           @default(true)
+  disposalInstruction  String
+  lastUpdated          DateTime          @default(now())
+}
+
+model PickupRequest {
+  id                   String            @id
+  userId               String
+  user                 User              @relation("UserPickups", fields: [userId], references: [id])
+  collectorId          String?
+  collector            Collector?        @relation("CollectorPickups", fields: [collectorId], references: [id])
+  addressId            String?
+  address              Address?          @relation(fields: [addressId], references: [id])
+  pickupAddress        String
+  wasteCategory        String
+  itemsSummary         String?
+  estimatedWeight      Float
+  estimatedValue       Float
+  actualWeight         Float?
+  ratePerKg            Float?
+  finalValue           Float?
+  specialInstructions  String?
+  latitude             Float             @default(12.9716)
+  longitude            Float             @default(77.6412)
+  preferredDate        String
+  preferredTime        String
+  status               String            @default("REQUESTED")
+  otp                  String
+  otpAttempts          Int               @default(0)
+  otpVerifiedAt        DateTime?
+  cancelledBy          String?
+  cancelledReason      String?
+  cancelledAt          DateTime?
+  rating               Float?
+  review               String?
+  ratingCreatedAt      DateTime?
+  createdAt            DateTime          @default(now())
+  completedAt          DateTime?
+
+  statusLogs           PickupStatusLog[]
+  location             PickupLocation?
+  payments             Payment[]
+  ratingRecord         PickupRating?
+}
+
+model PickupStatusLog {
+  id                   String            @id @default(cuid())
+  pickupId             String
+  pickup               PickupRequest     @relation(fields: [pickupId], references: [id], onDelete: Cascade)
+  oldStatus            String?
+  newStatus            String
+  title                String
+  changedBy            String?
+  changedByRole        String?
+  note                 String?
+  timestamp            DateTime          @default(now())
+}
+
+model PickupLocation {
+  id                   String            @id @default(cuid())
+  pickupId             String            @unique
+  pickup               PickupRequest     @relation(fields: [pickupId], references: [id], onDelete: Cascade)
+  collectorId          String
+  collector            Collector         @relation(fields: [collectorId], references: [id])
+  latitude             Float
+  longitude            Float
+  trackingActive       Boolean           @default(true)
+  updatedAt            DateTime          @default(now())
+}
+
+model Payment {
+  id                   String            @id @default(cuid())
+  pickupId             String
+  pickup               PickupRequest     @relation(fields: [pickupId], references: [id])
+  userId               String
+  user                 User              @relation("UserPayments", fields: [userId], references: [id])
+  collectorId          String
+  collector            Collector         @relation("CollectorPayments", fields: [collectorId], references: [id])
+  amount               Float
+  paymentMethod        String            @default("UPI") // UPI, CASH
+  paymentStatus        String            @default("PAID") // PAID, PENDING, FAILED
+  transactionRef       String            @unique
+  createdAt            DateTime          @default(now())
+}
+
+model EcoTransaction {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                 String            // EARNED, REDEEMED, BONUS, REVERSAL, ADJUSTMENT
+  credits              Int
+  source               String
+  referenceId          String
+  description          String?
+  createdAt            DateTime          @default(now())
+}
+
+model UserSession {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash     String
+  userAgent            String?
+  ipAddress            String?
+  expiresAt            DateTime
+  createdAt            DateTime          @default(now())
+}
+
+model WasteScan {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id])
+  detectedMaterial     String
+  wasteCategory        String
+  confidence           Float
+  estimatedWeight      Float
+  estimatedValue       Float
+  disposalInstruction  String
+  createdAt            DateTime          @default(now())
+}
+
+model UserActivity {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id])
+  activityType         String
+  title                String
+  description          String
+  pickupId             String?
+  scanId               String?
+  rewardId             String?
+  amount               Float?
+  ecoCredits           Int?
+  wasteMaterial        String?
+  weight               Float?
+  status               String?
+  timestamp            DateTime          @default(now())
+}
+
+model Notification {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id])
+  recipientId          String?
+  recipientRole        String            @default("user")
+  title                String
+  message              String
+  type                 String
+  isRead               Boolean           @default(false)
+  pickupId             String?
+  rewardId             String?
+  createdAt            DateTime          @default(now())
+}
+
+model Partner {
+  id                   String            @id @default(cuid())
+  partnerName          String
+  category             String
+  description          String
+  locationArea         String
+  contactInfo          String
+  partnershipStatus    String            @default("Active")
+  verifiedStatus       Boolean           @default(true)
+  rewardTypes          String            @default("Discount Coupon")
+  startDate            String
+  expiryDate           String
+  termsAndConditions   String
+  active               Boolean           @default(true)
+  cityAvailability     String            @default("Hyderabad")
+  createdAt            DateTime          @default(now())
+
+  rewards              RewardItem[]
+}
+
+model RewardItem {
+  id                   String            @id @default(cuid())
+  partnerId            String
+  partner              Partner           @relation(fields: [partnerId], references: [id])
+  partnerName          String
+  title                String
+  description          String
+  rewardCategory       String
+  creditsRequired      Int
+  discountValue        String
+  rewardType           String
+  terms                String
+  expiryDate           String
+  redemptionLimit      Int               @default(5)
+  stock                Int               @default(50)
+  active               Boolean           @default(true)
+  sponsoredType        String            @default("partner")
+  cityScope            String            @default("Hyderabad")
+  codeTemplate         String?
+  createdAt            DateTime          @default(now())
+
+  redemptions          RewardRedemption[]
+}
+
+model RewardRedemption {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id])
+  rewardId             String
+  reward               RewardItem        @relation(fields: [rewardId], references: [id])
+  partnerId            String?
+  partnerName          String?
+  rewardTitle          String?
+  discountValue        String?
+  creditsSpent         Int               @default(0)
+  provider             String?
+  providerTransactionId String?
+  voucherCode          String            @default("VOUCHER")
+  voucherPin           String?
+  redemptionCode       String
+  redemptionDate       String?
+  redeemedAt           DateTime          @default(now())
+  expiryDate           String?
+  status               String            @default("COMPLETED")
+  redemptionStatus     String            @default("ACTIVE")
+  usedAt               DateTime?
+}
+
+model PickupRating {
+  id                   String            @id @default(cuid())
+  pickupId             String            @unique
+  pickup               PickupRequest     @relation(fields: [pickupId], references: [id])
+  userId               String
+  user                 User              @relation("UserRatings", fields: [userId], references: [id])
+  collectorId          String
+  collector            Collector         @relation("CollectorRatings", fields: [collectorId], references: [id])
+  rating               Float
+  review               String?
+  createdAt            DateTime          @default(now())
+}

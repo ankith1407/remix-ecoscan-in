@@ -1,0 +1,835 @@
+{
+  "users": [
+    {
+      "id": "usr_aditi",
+      "name": "Aditi Rao",
+      "email": "aditi.rao@gmail.com",
+      "phone": "+91 98450 12345",
+      "profile_image": "",
+      "role": "user",
+      "address": "Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru, KA 560038",
+      "latitude": 12.9716,
+      "longitude": 77.6412,
+      "eco_credits": 981,
+      "total_waste_recycled": 76.2,
+      "total_earnings": 2603,
+      "created_at": "2026-08-04T19:55:14.846Z"
+    },
+    {
+      "id": "usr_collector_raju",
+      "name": "Raju Kumar (Green Earth Hub)",
+      "email": "raju.scrap@ecoscan.in",
+      "phone": "+91 98765 43210",
+      "profile_image": "",
+      "role": "collector",
+      "address": "HAL 2nd Stage, Indiranagar, Bengaluru, KA 560008",
+      "latitude": 12.9698,
+      "longitude": 77.6499,
+      "eco_credits": 1400,
+      "total_waste_recycled": 412,
+      "total_earnings": 14250,
+      "created_at": "2026-07-05T19:55:14.846Z"
+    },
+    {
+      "id": "usr_collector_suresh",
+      "name": "Suresh Gowda (Mandi Depot)",
+      "email": "suresh.mandi@ecoscan.in",
+      "phone": "+91 98451 99887",
+      "profile_image": "",
+      "role": "collector",
+      "address": "HAL 3rd Stage, Old Airport Road, Bengaluru, KA 560017",
+      "latitude": 12.958,
+      "longitude": 77.653,
+      "eco_credits": 980,
+      "total_waste_recycled": 620,
+      "total_earnings": 21800,
+      "created_at": "2026-07-20T19:55:14.846Z"
+    },
+    {
+      "id": "usr_admin",
+      "name": "EcoScan Admin Desk",
+      "email": "admin@ecoscan.in",
+      "phone": "+91 80 4012 3456",
+      "profile_image": "",
+      "role": "admin",
+      "address": "EcoScan Tech Ops Hub, MG Road, Bengaluru, KA 560001",
+      "latitude": 12.975,
+      "longitude": 77.608,
+      "eco_credits": 5000,
+      "total_waste_recycled": 1240,
+      "total_earnings": 0,
+      "created_at": "2026-06-05T19:55:14.846Z"
+    }
+  ],
+  "waste_scans": [
+    {
+      "id": "scan_1788546660094",
+      "user_id": "usr_aditi",
+      "detected_material": "Mixed Metal Scrap",
+      "waste_category": "Metal",
+      "confidence": 0.95,
+      "estimated_weight": 500,
+      "estimated_value": 16000,
+      "disposal_instruction": "Segregate all metal scrap from other waste streams. Store in a dry area to prevent rust and corrosion before selling to a local scrap dealer or via a doorstep buyback service.",
+      "created_at": "2026-09-04T18:31:00.094Z"
+    },
+    {
+      "id": "scan_1788514387769",
+      "user_id": "usr_aditi",
+      "detected_material": "Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.98,
+      "estimated_weight": 0.45,
+      "estimated_value": 15.75,
+      "disposal_instruction": "Rinse with water, crush flat and place in Blue Dry Recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-04T09:33:07.770Z"
+    },
+    {
+      "id": "scan_1788512715849",
+      "user_id": "usr_aditi",
+      "detected_material": "Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.98,
+      "estimated_weight": 0.45,
+      "estimated_value": 15.75,
+      "disposal_instruction": "Rinse with water, crush flat and place in Blue Dry Recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-04T09:05:15.849Z"
+    },
+    {
+      "id": "scan_1788512646352",
+      "user_id": "usr_aditi",
+      "detected_material": "Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.98,
+      "estimated_weight": 0.45,
+      "estimated_value": 15.75,
+      "disposal_instruction": "Rinse with water, crush flat and place in Blue Dry Recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-04T09:04:06.352Z"
+    },
+    {
+      "id": "scan_1788510561915",
+      "user_id": "usr_aditi",
+      "detected_material": "PET Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.92,
+      "estimated_weight": 0.5,
+      "estimated_value": 17.5,
+      "disposal_instruction": "Rinse with water, crush flat and place in blue dry recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-04T08:29:21.915Z"
+    },
+    {
+      "id": "scan_1788510475592",
+      "user_id": "usr_aditi",
+      "detected_material": "PET Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.92,
+      "estimated_weight": 0.5,
+      "estimated_value": 17.5,
+      "disposal_instruction": "Rinse with water, crush flat and place in blue dry recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-04T08:27:55.592Z"
+    },
+    {
+      "id": "scan_1788466590946",
+      "user_id": "usr_aditi",
+      "detected_material": "PET Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.92,
+      "estimated_weight": 0.5,
+      "estimated_value": 17.5,
+      "disposal_instruction": "Rinse with water, crush flat and place in blue dry recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-03T20:16:30.946Z"
+    },
+    {
+      "id": "scan_1788466517239",
+      "user_id": "usr_aditi",
+      "detected_material": "PET Plastic Bottle",
+      "waste_category": "Plastic",
+      "confidence": 0.92,
+      "estimated_weight": 0.5,
+      "estimated_value": 17.5,
+      "disposal_instruction": "Rinse with water, crush flat and place in blue dry recyclables bin or book doorstep scrap pickup.",
+      "created_at": "2026-09-03T20:15:17.239Z"
+    }
+  ],
+  "waste_materials": [
+    {
+      "id": "mat-1",
+      "material_name": "PET Plastic Bottles",
+      "category": "Plastic",
+      "current_price_per_kg": 35,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Rinse with clean water, crush flat to reduce volume, place in blue dry bin.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-2",
+      "material_name": "HDPE Plastic Containers",
+      "category": "Plastic",
+      "current_price_per_kg": 28,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Clean milk jugs, detergent containers, rinse and dry before pickup.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-3",
+      "material_name": "Corrugated Cardboard Boxes",
+      "category": "Cardboard",
+      "current_price_per_kg": 14,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Flatten shipping boxes, protect strictly from moisture and oils.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-4",
+      "material_name": "Newspaper & Mixed Paper",
+      "category": "Paper",
+      "current_price_per_kg": 16,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Tie with jute string into bundles, keep dry for maximum payout.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-5",
+      "material_name": "Iron & TMT Steel Rods",
+      "category": "Metal",
+      "current_price_per_kg": 32,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Scrap construction steel and saria. Infinitely melted without quality loss.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-6",
+      "material_name": "Aluminium Beverage Cans",
+      "category": "Metal",
+      "current_price_per_kg": 145,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Crush flat. Energy saved during remelting is 95% compared to raw bauxite ore.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-7",
+      "material_name": "Millberry Pure Copper Wire",
+      "category": "Metal",
+      "current_price_per_kg": 510,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Stripped bright bare wire commands highest scrap premium in Indian mandis.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-8",
+      "material_name": "Glass Bottles (Beer/Soda)",
+      "category": "Glass",
+      "current_price_per_kg": 8,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Rinse bottles, ensure no breakage to ensure safe handling by collectors.",
+      "last_updated": "2026-09-03T19:55:14.845Z"
+    },
+    {
+      "id": "mat-9",
+      "material_name": "E-Waste PCBs & Motherboards",
+      "category": "E-waste",
+      "current_price_per_kg": 160,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Handle with care. CPCB authorized recyclers recover gold, silver, and palladium.",
+      "last_updated": "2026-09-03T19:55:14.846Z"
+    },
+    {
+      "id": "mat-10",
+      "material_name": "Organic Kitchen & Food Waste",
+      "category": "Organic",
+      "current_price_per_kg": 0,
+      "unit": "₹/kg",
+      "recyclable": false,
+      "disposal_instruction": "Compost at home or hand to municipal green bins. No kabadiwala cash buyback.",
+      "last_updated": "2026-09-03T19:55:14.846Z"
+    },
+    {
+      "id": "mat-11",
+      "material_name": "Cotton & Fabric Textile Scrap",
+      "category": "Textile",
+      "current_price_per_kg": 18,
+      "unit": "₹/kg",
+      "recyclable": true,
+      "disposal_instruction": "Shredded into industrial cleaning rags or re-spun into yarn.",
+      "last_updated": "2026-09-03T19:55:14.846Z"
+    }
+  ],
+  "collectors": [
+    {
+      "id": "col-1",
+      "user_id": "usr_collector_raju",
+      "name": "Raju Kumar (Green Earth Kabadiwala Hub)",
+      "phone": "+91 98765 43210",
+      "verification_status": "VERIFIED",
+      "service_area": "Indiranagar, HAL 2nd Stage, Domlur, Kodihalli",
+      "latitude": 12.9698,
+      "longitude": 77.6499,
+      "available": true,
+      "rating": 4.9,
+      "total_pickups": 144,
+      "total_earnings": 50973
+    },
+    {
+      "id": "col-2",
+      "user_id": "usr_collector_suresh",
+      "name": "Suresh Gowda (Bangalore Metal & Paper Depot)",
+      "phone": "+91 98451 99887",
+      "verification_status": "VERIFIED",
+      "service_area": "Old Airport Road, Murugeshpalya, Marathahalli",
+      "latitude": 12.958,
+      "longitude": 77.653,
+      "available": true,
+      "rating": 4.8,
+      "total_pickups": 89,
+      "total_earnings": 31200
+    },
+    {
+      "id": "col-3",
+      "user_id": "usr_collector_pending",
+      "name": "Ramesh Patel (Clean City Scrap)",
+      "phone": "+91 99002 33445",
+      "verification_status": "PENDING",
+      "service_area": "Koramangala 4th Block, HSR Layout",
+      "latitude": 12.935,
+      "longitude": 77.624,
+      "available": false,
+      "rating": 4.5,
+      "total_pickups": 12,
+      "total_earnings": 3400
+    }
+  ],
+  "pickup_requests": [
+    {
+      "id": "pick-1788546879216-5y09h",
+      "user_id": "usr_aditi",
+      "user_name": "Aditi Rao",
+      "user_phone": "+91 98450 12345",
+      "collector_id": "col-1",
+      "collector_name": "Raju Kumar (Green Earth Kabadiwala Hub)",
+      "waste_category": "Newspaper / Cartons",
+      "items_summary": "Newspaper / Cartons, Old Appliances (5kg)",
+      "estimated_weight": 5,
+      "estimated_value": 175,
+      "pickup_address": "Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru",
+      "latitude": 12.9716,
+      "longitude": 77.6412,
+      "preferred_date": "Today, 4 PM",
+      "preferred_time": "10:30 AM",
+      "status": "WEIGHED",
+      "status_history": [
+        {
+          "status": "REQUESTED",
+          "title": "Pickup Requested",
+          "timestamp": "2026-09-04T18:34:39.216Z",
+          "note": "Requested doorstep pickup for 5 kg Newspaper / Cartons"
+        },
+        {
+          "status": "ACCEPTED",
+          "title": "Collector Accepted",
+          "timestamp": "2026-09-04T18:34:54.797Z"
+        },
+        {
+          "status": "COLLECTOR_ON_THE_WAY",
+          "title": "Collector On The Way",
+          "timestamp": "2026-09-04T18:34:56.488Z"
+        },
+        {
+          "status": "ARRIVED",
+          "title": "Collector Arrived",
+          "timestamp": "2026-09-04T18:35:00.901Z"
+        },
+        {
+          "status": "WEIGHED",
+          "title": "Weight Verified",
+          "timestamp": "2026-09-04T18:35:20.110Z",
+          "note": "19.9 kg verified at ₹35/kg"
+        }
+      ],
+      "otp": "3579",
+      "created_at": "2026-09-04T18:34:39.216Z",
+      "actual_weight": 19.9,
+      "final_value": 696.5
+    },
+    {
+      "id": "pick-1788510608044-h8s2k",
+      "user_id": "usr_aditi",
+      "user_name": "Aditi Rao",
+      "user_phone": "+91 98450 12345",
+      "collector_id": "col-1",
+      "collector_name": "Raju Kumar (Green Earth Kabadiwala Hub)",
+      "waste_category": "Copper Wire / Brass",
+      "items_summary": "Plastic Scrap (50kg)",
+      "estimated_weight": 50,
+      "estimated_value": 1750,
+      "pickup_address": "Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru",
+      "latitude": 12.9716,
+      "longitude": 77.6412,
+      "preferred_date": "Today, 4 PM",
+      "preferred_time": "10:30 AM",
+      "status": "COMPLETED",
+      "otp": "1946",
+      "created_at": "2026-09-04T08:30:08.044Z",
+      "actual_weight": 28.8,
+      "final_value": 1008,
+      "completed_at": "2026-09-04T08:33:33.668Z"
+    },
+    {
+      "id": "pick-101",
+      "user_id": "usr_aditi",
+      "user_name": "Aditi Rao",
+      "user_phone": "+91 98450 12345",
+      "collector_id": "col-1",
+      "collector_name": "Raju Kumar (Green Earth Kabadiwala Hub)",
+      "waste_category": "Cardboard & Appliances",
+      "items_summary": "Corrugated Cartons + Old Iron Rods",
+      "estimated_weight": 12,
+      "estimated_value": 280,
+      "actual_weight": 13.5,
+      "final_value": 315,
+      "pickup_address": "Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru",
+      "latitude": 12.9716,
+      "longitude": 77.6412,
+      "preferred_date": "Today",
+      "preferred_time": "10:30 AM",
+      "status": "COMPLETED",
+      "otp": "4829",
+      "created_at": "2026-09-01T19:55:14.846Z",
+      "completed_at": "2026-09-01T21:55:14.846Z"
+    },
+    {
+      "id": "pick-102",
+      "user_id": "usr_aditi",
+      "user_name": "Aditi Rao",
+      "user_phone": "+91 98450 12345",
+      "collector_id": "col-1",
+      "collector_name": "Raju Kumar (Green Earth Kabadiwala Hub)",
+      "waste_category": "Plastic & Metal",
+      "items_summary": "PET Plastic Bottles (5kg) + Aluminium Cans",
+      "estimated_weight": 7.5,
+      "estimated_value": 235,
+      "pickup_address": "Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru",
+      "latitude": 12.9716,
+      "longitude": 77.6412,
+      "preferred_date": "Tomorrow",
+      "preferred_time": "11:00 AM",
+      "status": "COMPLETED",
+      "otp": "7193",
+      "created_at": "2026-09-03T18:55:14.846Z",
+      "actual_weight": 29,
+      "final_value": 1015,
+      "completed_at": "2026-09-04T08:36:09.745Z"
+    }
+  ],
+  "pickup_locations": [
+    {
+      "pickup_id": "pick-1788510608044-h8s2k",
+      "collector_id": "col-1",
+      "latitude": 17.493146784706497,
+      "longitude": 78.44108735097834,
+      "updated_at": "2026-09-04T08:33:33.674Z",
+      "tracking_active": false
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_1788510969717",
+      "pickup_id": "pick-102",
+      "user_id": "usr_aditi",
+      "collector_id": "col-1",
+      "amount": 1015,
+      "payment_method": "UPI",
+      "payment_status": "PAID",
+      "transaction_reference": "DEMO_UPI_1788510969717_4614",
+      "created_at": "2026-09-04T08:36:09.717Z"
+    },
+    {
+      "id": "pay_1788510813643",
+      "pickup_id": "pick-1788510608044-h8s2k",
+      "user_id": "usr_aditi",
+      "collector_id": "col-1",
+      "amount": 1008,
+      "payment_method": "UPI",
+      "payment_status": "PAID",
+      "transaction_reference": "DEMO_UPI_1788510813643_6092",
+      "created_at": "2026-09-04T08:33:33.643Z"
+    },
+    {
+      "id": "pay-101",
+      "pickup_id": "pick-101",
+      "user_id": "usr_aditi",
+      "collector_id": "col-1",
+      "amount": 315,
+      "payment_method": "UPI",
+      "payment_status": "PAID",
+      "transaction_reference": "UPI/DEMO/ECO948293182",
+      "created_at": "2026-09-01T21:55:14.846Z"
+    }
+  ],
+  "eco_transactions": [
+    {
+      "id": "tx_1788510969726",
+      "user_id": "usr_aditi",
+      "type": "EARNED",
+      "credits": 116,
+      "source": "Doorstep Pickup #pick-102 (29 kg)",
+      "reference_id": "pick-102",
+      "created_at": "2026-09-04T08:36:09.726Z"
+    },
+    {
+      "id": "tx_1788510813649",
+      "user_id": "usr_aditi",
+      "type": "EARNED",
+      "credits": 115,
+      "source": "Doorstep Pickup #pick-1788510608044-h8s2k (28.8 kg)",
+      "reference_id": "pick-1788510608044-h8s2k",
+      "created_at": "2026-09-04T08:33:33.649Z"
+    },
+    {
+      "id": "tx-101",
+      "user_id": "usr_aditi",
+      "type": "EARNED",
+      "credits": 50,
+      "source": "Doorstep Pickup #pick-101 (13.5 kg recycled)",
+      "reference_id": "pick-101",
+      "created_at": "2026-09-01T21:55:14.846Z"
+    }
+  ],
+  "rewards": [
+    {
+      "id": "rew-1",
+      "partner_name": "Zepto Groceries",
+      "title": "₹50 Off Daily Organic Produce",
+      "description": "Applicable on farm-fresh vegetables and fruits. Minimum cart value ₹199.",
+      "credits_required": 150,
+      "reward_type": "Discount Voucher",
+      "active": true,
+      "expiry_date": "31/12/2026"
+    },
+    {
+      "id": "rew-2",
+      "partner_name": "Swiggy Food & Dine",
+      "title": "₹100 Off Gourmet Green Kitchens",
+      "description": "Valid on eco-certified restaurants serving in biodegradable packaging.",
+      "credits_required": 250,
+      "reward_type": "Food Voucher",
+      "active": true,
+      "expiry_date": "31/12/2026"
+    },
+    {
+      "id": "rew-3",
+      "partner_name": "Google Play Gift Card",
+      "title": "₹100 Google Play Store Credit",
+      "description": "Redeemable for educational apps, books, or games on the Google Play Store.",
+      "credits_required": 300,
+      "reward_type": "Digital Code",
+      "active": true,
+      "expiry_date": "31/12/2026"
+    },
+    {
+      "id": "rew-4",
+      "partner_name": "Daily Dump Urban Living",
+      "title": "₹200 Off Home Composting Starter Kit",
+      "description": "Turn household food scraps into nutrient-rich black gold for your terrace garden.",
+      "credits_required": 400,
+      "reward_type": "Product Discount",
+      "active": true,
+      "expiry_date": "31/12/2026"
+    },
+    {
+      "id": "rew-5",
+      "partner_name": "Phool Natural Incense",
+      "title": "₹150 Off Temple-Flower Recycled Incense",
+      "description": "Handcrafted charcoal-free incense made from upcycled temple floral offerings.",
+      "credits_required": 200,
+      "reward_type": "Eco Product",
+      "active": true,
+      "expiry_date": "31/12/2026"
+    }
+  ],
+  "reward_redemptions": [],
+  "partners": [
+    {
+      "id": "part-1",
+      "partner_name": "Swachh Organic Cafe & Bakery",
+      "category": "food_restaurants",
+      "description": "Hyderabad zero-waste cafe serving organic farm-to-table meals in 100% compostable leafware.",
+      "location_area": "Jubilee Hills & Gachibowli, Hyderabad",
+      "contact_info": "partner@swachhcafe.in • +91 98490 11223",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Discount Coupon",
+        "Free Eco Drink"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Valid on dine-in and takeaway. Minimum bill ₹299.",
+      "active": true,
+      "city_availability": "Hyderabad",
+      "created_at": "2026-07-06T18:30:19.377Z"
+    },
+    {
+      "id": "part-2",
+      "partner_name": "Green Basket Organics",
+      "category": "shopping",
+      "description": "Certified organic grocery e-store delivering plastic-free produce across Telangana.",
+      "location_area": "Telangana & Hyderabad Metro",
+      "contact_info": "support@greenbasket.co.in • +91 40 2345 6789",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Shopping Voucher",
+        "Free Delivery"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Applicable on organic vegetables, pulses, and cold-pressed oils.",
+      "active": true,
+      "city_availability": "Telangana",
+      "created_at": "2026-07-21T18:30:19.377Z"
+    },
+    {
+      "id": "part-3",
+      "partner_name": "Cinepolis Eco Cinema",
+      "category": "entertainment",
+      "description": "Premier cinema partner promoting carbon-neutral film screenings and popcorn eco-cups.",
+      "location_area": "Pan-India Movie Multiplexes",
+      "contact_info": "corporate@cinepolis.in",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Movie Ticket Offer",
+        "Combo Discount"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Valid Monday through Thursday on all standard screen shows.",
+      "active": true,
+      "city_availability": "Pan-India",
+      "created_at": "2026-08-05T18:30:19.377Z"
+    },
+    {
+      "id": "part-4",
+      "partner_name": "Campus Green Student Club",
+      "category": "student_benefits",
+      "description": "University green ambassador initiative rewarding students for campus segregation drives.",
+      "location_area": "Colleges & Institutions across India",
+      "contact_info": "students@campusgreen.edu.in",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Course Coupon",
+        "Student Discount"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Requires valid college student ID card verification.",
+      "active": true,
+      "city_availability": "Pan-India",
+      "created_at": "2026-08-10T18:30:19.377Z"
+    },
+    {
+      "id": "part-5",
+      "partner_name": "Green Mobility EV Fleet",
+      "category": "travel_lifestyle",
+      "description": "Clean energy electric scooter & cab rentals for eco-friendly city commuting.",
+      "location_area": "Hyderabad, Bengaluru, Chennai",
+      "contact_info": "support@greenmobility.in",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Ride Cashback",
+        "Discount Code"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Valid on first 5 electric scooter rentals per account.",
+      "active": true,
+      "city_availability": "Hyderabad",
+      "created_at": "2026-08-20T18:30:19.377Z"
+    },
+    {
+      "id": "part-6",
+      "partner_name": "Phool Natural Upcycled Floral Products",
+      "category": "eco_friendly",
+      "description": "Charcoal-free incense and organic compost handcrafted from upcycled temple floral waste.",
+      "location_area": "Online-Only Nationwide",
+      "contact_info": "care@phool.co",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Eco Kit Voucher",
+        "Flat Discount"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Valid on all handcrafted flower incense and Florafoam packaging products.",
+      "active": true,
+      "city_availability": "Online-Only",
+      "created_at": "2026-07-26T18:30:19.377Z"
+    },
+    {
+      "id": "part-7",
+      "partner_name": "Charminar Artisan Eco-Crafts",
+      "category": "local_partners",
+      "description": "Hyderabad local artisan guild producing handloom jute tote bags and recycled terracotta decor.",
+      "location_area": "Old City & Shilparamam, Hyderabad",
+      "contact_info": "artisans@hydecocrafts.org • +91 94401 88776",
+      "partnership_status": "Active",
+      "verified_status": true,
+      "reward_types": [
+        "Store Coupon",
+        "Handicraft Gift"
+      ],
+      "start_date": "01/01/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Show EcoScan digital voucher code at artisan counter.",
+      "active": true,
+      "city_availability": "Hyderabad",
+      "created_at": "2026-08-25T18:30:19.377Z"
+    },
+    {
+      "id": "part-8",
+      "partner_name": "Hyderabad Metro Food Hub",
+      "category": "food_restaurants",
+      "description": "Proposed local food court alliance for waste segregation incentives at metro stations.",
+      "location_area": "Miyapur to LB Nagar Line, Hyderabad",
+      "contact_info": "prospects@ecoscan.in",
+      "partnership_status": "Prospect",
+      "verified_status": false,
+      "reward_types": [
+        "Snack Coupon"
+      ],
+      "start_date": "01/03/2026",
+      "expiry_date": "31/12/2026",
+      "terms_and_conditions": "Partnership under negotiation with municipal commercial desk.",
+      "active": false,
+      "city_availability": "Hyderabad",
+      "created_at": "2026-09-04T18:30:19.377Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif_1788546900923",
+      "user_id": "usr_aditi",
+      "type": "COLLECTOR_ARRIVED",
+      "title": "📦 Collector Arrived",
+      "message": "Your collector has arrived at your location for scrap inspection.",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "read": false,
+      "is_read": false,
+      "created_at": "2026-09-04T18:35:00.901Z"
+    },
+    {
+      "id": "notif_1788546896501",
+      "user_id": "usr_aditi",
+      "type": "COLLECTOR_ON_THE_WAY",
+      "title": "📍 Collector On The Way",
+      "message": "Your collector is on the way to your pickup location.",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "read": false,
+      "is_read": false,
+      "created_at": "2026-09-04T18:34:56.488Z"
+    },
+    {
+      "id": "notif_1788546894820",
+      "user_id": "usr_aditi",
+      "type": "PICKUP_ACCEPTED",
+      "title": "✅ Pickup Accepted",
+      "message": "Your pickup has been accepted by Raju Kumar (Green Earth Kabadiwala Hub).",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "read": false,
+      "is_read": false,
+      "created_at": "2026-09-04T18:34:54.796Z"
+    },
+    {
+      "id": "notif_1788546879251",
+      "user_id": "usr_aditi",
+      "type": "PICKUP_REQUESTED",
+      "title": "🚚 Pickup Requested",
+      "message": "Your EcoScan pickup request #pick-178 has been submitted.",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "read": false,
+      "is_read": false,
+      "created_at": "2026-09-04T18:34:39.216Z"
+    }
+  ],
+  "user_activities": [
+    {
+      "id": "act_1788546920115",
+      "user_id": "usr_aditi",
+      "activity_type": "WEIGHT_VERIFIED",
+      "title": "Actual Weight Verified",
+      "description": "Verified 19.9 kg Newspaper / Cartons at ₹35/kg (Total: ₹696.5)",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "weight": 19.9,
+      "amount": 696.5,
+      "waste_material": "Newspaper / Cartons",
+      "timestamp": "2026-09-04T18:35:20.110Z",
+      "status": "WEIGHED"
+    },
+    {
+      "id": "act_1788546900914",
+      "user_id": "usr_aditi",
+      "activity_type": "WASTE_COLLECTED",
+      "title": "Collector Arrived",
+      "description": "Collector Raju Kumar (Green Earth Kabadiwala Hub) arrived at your doorstep",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "timestamp": "2026-09-04T18:35:00.901Z",
+      "status": "ARRIVED"
+    },
+    {
+      "id": "act_1788546896498",
+      "user_id": "usr_aditi",
+      "activity_type": "COLLECTOR_ON_THE_WAY",
+      "title": "Collector On The Way",
+      "description": "Collector Raju Kumar (Green Earth Kabadiwala Hub) has started their journey",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "timestamp": "2026-09-04T18:34:56.488Z",
+      "status": "COLLECTOR_ON_THE_WAY"
+    },
+    {
+      "id": "act_1788546894809",
+      "user_id": "usr_aditi",
+      "activity_type": "PICKUP_ACCEPTED",
+      "title": "Pickup Accepted",
+      "description": "Collector Raju Kumar (Green Earth Kabadiwala Hub) accepted your pickup request",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "timestamp": "2026-09-04T18:34:54.796Z",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "act_1788546879233_14",
+      "user_id": "usr_aditi",
+      "activity_type": "PICKUP_REQUESTED",
+      "title": "Pickup Requested",
+      "description": "Submitted doorstep pickup request for 5 kg Newspaper / Cartons",
+      "pickup_id": "pick-1788546879216-5y09h",
+      "weight": 5,
+      "waste_material": "Newspaper / Cartons",
+      "timestamp": "2026-09-04T18:34:39.216Z",
+      "status": "REQUESTED"
+    },
+    {
+      "id": "act_scan_1788546660113_154",
+      "user_id": "usr_aditi",
+      "activity_type": "WASTE_SCANNED",
+      "title": "Waste Material Scanned",
+      "description": "Detected Mixed Metal Scrap (Metal) with 95% AI confidence",
+      "scan_id": "scan_1788546660094",
+      "waste_material": "Mixed Metal Scrap",
+      "weight": 500,
+      "timestamp": "2026-09-04T18:31:00.113Z",
+      "status": "SCANNED"
+    }
+  ]
+}
