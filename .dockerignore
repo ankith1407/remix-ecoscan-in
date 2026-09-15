@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.local
+logs
+data
+.git
+.gitignore
+*.md
+*.log
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal

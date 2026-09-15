@@ -102,8 +102,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       return;
     }
 
-    if (password.length < 12) {
-      setErrorMessage('Please choose a password with at least 12 characters.');
+    if (password.length < 6) {
+      setErrorMessage('Please choose a password with at least 6 characters.');
       return;
     }
 

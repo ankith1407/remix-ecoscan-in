@@ -347,6 +347,20 @@ export interface PartnerDashboardData {
   creditsRedeemed: number;
   conversionRatePct: number;
 }
+export interface AdminStatsData {
+  totalUsers: number;
+  totalCollectors: number;
+  verifiedCollectors: number;
+  totalPickups: number;
+  completedPickups: number;
+  totalWasteRecycled: number;
+  totalTransactionValue: number;
+  ecoCreditsIssued: number;
+  activeRewards: number;
+  wasteByCategory: Record<string, number>;
+  recentPickups: DbPickupRequest[];
+  recentPayments: DbPayment[];
+}
 
 export interface DatabaseSchema {
   users: DbUser[];
@@ -489,9 +503,9 @@ const INITIAL_USERS: DbUser[] = [
     phone: '+91 98450 12345',
     profile_image: '',
     role: 'user',
-    address: 'Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru, KA 560038',
-    latitude: 12.9716,
-    longitude: 77.6412,
+    address: 'Plot 402, Road No 36, Jubilee Hills, Hyderabad, Telangana 500033',
+    latitude: 17.4319,
+    longitude: 78.4073,
     eco_credits: 750,
     total_waste_recycled: 18.4,
     total_earnings: 580,
@@ -504,9 +518,9 @@ const INITIAL_USERS: DbUser[] = [
     phone: '+91 98765 43210',
     profile_image: '',
     role: 'collector',
-    address: 'HAL 2nd Stage, Indiranagar, Bengaluru, KA 560008',
-    latitude: 12.9698,
-    longitude: 77.6499,
+    address: 'Banjara Hills Road No 12, Hyderabad, Telangana 500034',
+    latitude: 17.4156,
+    longitude: 78.4347,
     eco_credits: 1400,
     total_waste_recycled: 412.0,
     total_earnings: 14250,
@@ -519,9 +533,9 @@ const INITIAL_USERS: DbUser[] = [
     phone: '+91 98451 99887',
     profile_image: '',
     role: 'collector',
-    address: 'HAL 3rd Stage, Old Airport Road, Bengaluru, KA 560017',
-    latitude: 12.958,
-    longitude: 77.653,
+    address: 'Madhapur Scrap Yard, HITECH City, Hyderabad, Telangana 500081',
+    latitude: 17.4486,
+    longitude: 78.3908,
     eco_credits: 980,
     total_waste_recycled: 620.0,
     total_earnings: 21800,
@@ -531,12 +545,12 @@ const INITIAL_USERS: DbUser[] = [
     id: 'usr_admin',
     name: 'EcoScan Admin Desk',
     email: 'admin@ecoscan.in',
-    phone: '+91 80 4012 3456',
+    phone: '+91 40 4012 3456',
     profile_image: '',
     role: 'admin',
-    address: 'EcoScan Tech Ops Hub, MG Road, Bengaluru, KA 560001',
-    latitude: 12.975,
-    longitude: 77.608,
+    address: 'EcoScan Tech Hub, Gachibowli, Hyderabad, Telangana 500032',
+    latitude: 17.4401,
+    longitude: 78.3489,
     eco_credits: 5000,
     total_waste_recycled: 1240.0,
     total_earnings: 0,
@@ -551,9 +565,9 @@ const INITIAL_COLLECTORS: DbCollector[] = [
     name: 'Raju Kumar (Green Earth Kabadiwala Hub)',
     phone: '+91 98765 43210',
     verification_status: 'VERIFIED',
-    service_area: 'Indiranagar, HAL 2nd Stage, Domlur, Kodihalli',
-    latitude: 12.9698,
-    longitude: 77.6499,
+    service_area: 'Jubilee Hills, Banjara Hills, Film Nagar, Madhapur',
+    latitude: 17.4156,
+    longitude: 78.4347,
     available: true,
     rating: 4.9,
     total_pickups: 142,
@@ -562,12 +576,12 @@ const INITIAL_COLLECTORS: DbCollector[] = [
   {
     id: 'col-2',
     user_id: 'usr_collector_suresh',
-    name: 'Suresh Gowda (Bangalore Metal & Paper Depot)',
+    name: 'Suresh Gowda (Hyderabad Metal & Paper Depot)',
     phone: '+91 98451 99887',
     verification_status: 'VERIFIED',
-    service_area: 'Old Airport Road, Murugeshpalya, Marathahalli',
-    latitude: 12.958,
-    longitude: 77.653,
+    service_area: 'HITECH City, Gachibowli, Kondapur, Madhapur',
+    latitude: 17.4486,
+    longitude: 78.3908,
     available: true,
     rating: 4.8,
     total_pickups: 89,
@@ -579,9 +593,9 @@ const INITIAL_COLLECTORS: DbCollector[] = [
     name: 'Ramesh Patel (Clean City Scrap)',
     phone: '+91 99002 33445',
     verification_status: 'PENDING',
-    service_area: 'Koramangala 4th Block, HSR Layout',
-    latitude: 12.935,
-    longitude: 77.624,
+    service_area: 'Kukatpally, Ameerpet, SR Nagar',
+    latitude: 17.4849,
+    longitude: 78.4138,
     available: false,
     rating: 4.5,
     total_pickups: 12,

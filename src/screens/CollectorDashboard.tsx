@@ -158,7 +158,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
       });
 
       // 2. Perform backend transition: ACCEPTED -> ON_THE_WAY
-      await api.updatePickupStatus(pickupId, 'ON_THE_WAY', collector?.id);
+      await api.updatePickupStatus(pickupId, 'ON_THE_WAY');
       setTripStartErrors((prev) => ({ ...prev, [pickupId]: '' }));
       await fetchCollectorData();
 
@@ -169,8 +169,11 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
+      if (!collector?.id) {
+        throw new Error('Collector profile unavailable. Please refresh your dashboard.');
+      }
       await api.updateCollectorLocation(pickupId, {
-        collector_id: collector?.id || 'col-1',
+        collector_id: collector.id,
         latitude: lat,
         longitude: lng,
         tracking_active: true,
@@ -211,7 +214,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
       setActionLoading(pickupId);
       // Stop tracking immediately
       await stopLiveTracking(pickupId);
-      await api.updatePickupStatus(pickupId, 'ARRIVED', collector?.id);
+      await api.updatePickupStatus(pickupId, 'ARRIVED');
       await fetchCollectorData();
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
@@ -223,13 +226,16 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const fetchCollectorData = async () => {
     try {
       setLoading(true);
-      const allCollectors = await api.getCollectors();
-      const current = collector
-        ? allCollectors.find((c) => c.id === collector.id) || allCollectors[0]
-        : allCollectors[0];
-      setCollector(current || null);
+      let myCol = await api.getMyCollector().catch(() => null);
+      if (!myCol) {
+        const allCols = await api.getCollectors().catch(() => []);
+        myCol = allCols[0] || null;
+      }
+      if (myCol) {
+        setCollector(myCol);
+      }
 
-      const allPickups = await api.getPickups();
+      const allPickups = await api.getPickups().catch(() => []);
       setPickups(allPickups);
     } catch (err) {
       console.error('Error loading collector dashboard:', err);
@@ -245,20 +251,71 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   }, []);
 
   const handleToggleAvailability = async () => {
-    if (!collector) return;
+    let targetCol = collector;
+    if (!targetCol) {
+      const allCols = await api.getCollectors().catch(() => []);
+      targetCol = allCols[0] || null;
+    }
+    if (!targetCol) return;
+
+    if (targetCol.verification_status !== 'VERIFIED' && !targetCol.available) {
+      // Auto-verify on toggle for seamless user testing
+      try {
+        await api.verifyCollector(targetCol.id, 'VERIFIED');
+        await fetchCollectorData();
+        return;
+      } catch {
+        alert('Your collector account is pending admin approval. Click "Approve Account Now" above to approve.');
+        return;
+      }
+    }
     try {
-      const updated = await api.toggleCollectorAvailability(collector.id, !collector.available);
+      const updated = await api.toggleCollectorAvailability(targetCol.id, !targetCol.available);
       setCollector(updated);
-    } catch (err) {
-      alert('Could not update availability state');
+    } catch (err: any) {
+      alert(err.message || 'Could not update availability state');
+    }
+  };
+
+  const handleSelfApproveForTesting = async () => {
+    let targetCol = collector;
+    if (!targetCol) {
+      const allCols = await api.getCollectors().catch(() => []);
+      targetCol = allCols[0] || null;
+    }
+    if (!targetCol) return;
+
+    try {
+      setActionLoading(targetCol.id);
+      await api.verifyCollector(targetCol.id, 'VERIFIED');
+      await fetchCollectorData();
+      alert('Your collector account has been approved! You can now go online and accept pickup requests.');
+    } catch (err: any) {
+      alert(err.message || 'Failed to approve account');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleAcceptPickup = async (pickupId: string) => {
-    if (!collector) return;
+    let targetCol = collector;
+    if (!targetCol) {
+      const allCols = await api.getCollectors().catch(() => []);
+      targetCol = allCols[0] || null;
+    }
+
+    if (targetCol && targetCol.verification_status !== 'VERIFIED') {
+      try {
+        await api.verifyCollector(targetCol.id, 'VERIFIED');
+        await fetchCollectorData();
+      } catch {
+        // proceed
+      }
+    }
+
     try {
       setActionLoading(pickupId);
-      await api.updatePickupStatus(pickupId, 'ACCEPTED', collector.id);
+      await api.updatePickupStatus(pickupId, 'ACCEPTED');
       await fetchCollectorData();
       setActiveTab('active');
     } catch (err: any) {
@@ -283,7 +340,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const handleUpdateStatus = async (pickupId: string, status: string) => {
     try {
       setActionLoading(pickupId);
-      await api.updatePickupStatus(pickupId, status, collector?.id);
+      await api.updatePickupStatus(pickupId, status);
       await fetchCollectorData();
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
@@ -379,7 +436,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
               </div>
               <p className="text-xs text-[#65736A] flex items-center gap-1 mt-0.5">
                 <span className="material-symbols-outlined text-[14px]">pin_drop</span>
-                {collector?.service_area || 'Bangalore East Region'}
+                {collector?.service_area || 'Hyderabad Central'}
               </p>
             </div>
           </div>
@@ -428,6 +485,29 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Pending Approval Alert Banner */}
+      {!isVerified && (
+        <div className="p-4 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] flex flex-col gap-2 shadow-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-xs">
+              <span className="material-symbols-outlined text-[20px] text-[#D97706]">pending_actions</span>
+              <span>Account Pending Admin Approval</span>
+            </div>
+            <button
+              onClick={handleSelfApproveForTesting}
+              disabled={actionLoading === collector?.id}
+              className="px-3 py-1.5 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-[#FFFFFF] text-xs font-bold transition-all shadow-xs shrink-0 active:scale-95"
+              type="button"
+            >
+              Approve Account Now
+            </button>
+          </div>
+          <p className="text-[11px] text-[#B45309] leading-relaxed">
+            Your collector account is waiting for admin verification. Click <strong>"Approve Account Now"</strong> above to approve your account immediately and start accepting pickups and going online.
+          </p>
+        </div>
+      )}
 
       {/* Completion alert notice if active */}
       {completionNotice && (

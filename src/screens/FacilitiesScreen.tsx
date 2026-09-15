@@ -29,7 +29,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'facilities' | 'pickups'>('facilities');
   const [selectedFilter, setSelectedFilter] = useState<string>('All Materials');
-  const [searchQuery, setSearchQuery] = useState<string>('Indiranagar 100ft Rd, Bengaluru');
+  const [searchQuery, setSearchQuery] = useState<string>('Jubilee Hills Road No 36, Hyderabad');
   const [showMapView, setShowMapView] = useState<boolean>(false);
 
   // Deduplicate pickups by id to ensure distinct keys and prevent duplicate renders
@@ -170,7 +170,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
               </div>
               <button
                 aria-label="Locate Me"
-                onClick={() => setSearchQuery('Indiranagar 100ft Rd, Bengaluru (Verified GPS)')}
+                onClick={() => setSearchQuery('Jubilee Hills Road No 36, Hyderabad (Verified GPS)')}
                 className="w-8 h-8 rounded-xl bg-[#E8F3EB] hover:bg-[#D7E8DC] flex items-center justify-center text-[#3FA66B] active:scale-95 transition-transform shrink-0 border border-[#DCE5DE]"
                 type="button"
               >
@@ -282,9 +282,9 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                 <span className="material-symbols-outlined text-[28px]">pin_drop</span>
               </div>
               <div className="z-10">
-                <h4 className="font-editorial italic text-base font-bold text-[#172019]">Bengaluru Eco-Cluster Map</h4>
+                <h4 className="font-editorial italic text-base font-bold text-[#172019]">Hyderabad Eco-Cluster Map</h4>
                 <p className="text-xs text-[#65736A] mt-0.5">
-                  Showing 3 verified centers in Indiranagar & Kodihalli
+                  Showing 3 verified centers in Jubilee Hills & Banjara Hills
                 </p>
               </div>
               <button

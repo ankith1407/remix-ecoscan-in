@@ -6,6 +6,9 @@ let aiClient: GoogleGenAI | null = null;
 const TEMPORARY_GEMINI_MESSAGE = 'EcoAI is temporarily busy. Please try again in a moment.';
 const MAX_GEMINI_RETRIES = 3;
 
+// Minimum confidence required for an authoritative result.
+const MIN_CONFIDENCE = 0.70;
+
 function localizedTemporaryMessage(language: GeminiLanguage = 'EN'): string {
   if (language === 'HI') return 'EcoAI अभी व्यस्त है। कृपया थोड़ी देर बाद फिर प्रयास करें।';
   if (language === 'TE') return 'EcoAI ప్రస్తుతం బిజీగా ఉంది. దయచేసి కొద్దిసేపటి తర్వాత ప్రయత్నించండి.';
@@ -42,6 +45,16 @@ function isGeminiAuthenticationError(error: unknown): boolean {
     text.includes('invalid api key') ||
     text.includes('authentication') ||
     text.includes('unauthorized')
+  );
+}
+
+function isGeminiModelNotFoundError(error: unknown): boolean {
+  const { status, text } = getGeminiErrorDetails(error);
+  return (
+    status === 404 ||
+    text.includes('not found') ||
+    text.includes('404') ||
+    text.includes('model') && text.includes('not found')
   );
 }
 
@@ -94,14 +107,10 @@ function getGenAI(): GoogleGenAI | null {
     console.warn('[Gemini] GEMINI_API_KEY is not set in environment.');
     return null;
   }
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
+  if (!aiClient) {
+    aiClient = new GoogleGenAI({ apiKey });
+  }
+  return aiClient;
 }
 
 export interface WasteAnalysisResult {
@@ -125,9 +134,160 @@ export interface WasteAnalysisResult {
   disposal_instruction: string;
   current_rate_per_kg: number | null;
   detected_items: string[];
+  visible_materials: string[];
   requires_verification: boolean;
   reason?: string;
   is_unidentifiable?: boolean;
+}
+
+// -------------------------------------------------------------------
+// Controlled category taxonomy.
+// Gemini's raw category output is mapped into this list.
+// Any unknown value maps to 'other'.
+// -------------------------------------------------------------------
+const CONTROLLED_CATEGORIES = [
+  'plastic',
+  'paper',
+  'cardboard',
+  'metal',
+  'glass',
+  'organic',
+  'textile',
+  'e_waste',
+  'hazardous',
+  'medical',
+  'mixed',
+  'other',
+  'unknown',
+] as const;
+
+type ControlledCategory = typeof CONTROLLED_CATEGORIES[number];
+
+const CATEGORY_SYNONYMS: Record<string, ControlledCategory> = {
+  // Plastic
+  'plastics': 'plastic',
+  'pet': 'plastic',
+  'pet plastic': 'plastic',
+  'pet bottle': 'plastic',
+  'pet bottles': 'plastic',
+  'plastic bottle': 'plastic',
+  'plastic bottles': 'plastic',
+  'plastic containers': 'plastic',
+  'hdpe': 'plastic',
+  'hdpe plastic': 'plastic',
+  'pp': 'plastic',
+  'polypropylene': 'plastic',
+  'polyethylene': 'plastic',
+  'thermoplastic': 'plastic',
+  'pvc': 'plastic',
+  // Paper
+  'papers': 'paper',
+  'newspaper': 'paper',
+  'newspapers': 'paper',
+  'paper waste': 'paper',
+  // Cardboard
+  'cardboard box': 'cardboard',
+  'cardboard boxes': 'cardboard',
+  'corrugated': 'cardboard',
+  'carton': 'cardboard',
+  'cartons': 'cardboard',
+  // Metal
+  'metals': 'metal',
+  'iron': 'metal',
+  'steel': 'metal',
+  'aluminium': 'metal',
+  'aluminum': 'metal',
+  'copper': 'metal',
+  'brass': 'metal',
+  'ferrous': 'metal',
+  'non-ferrous': 'metal',
+  // Glass
+  'glasses': 'glass',
+  'glass bottle': 'glass',
+  'glass bottles': 'glass',
+  // Organic
+  'organics': 'organic',
+  'food waste': 'organic',
+  'food': 'organic',
+  'wet waste': 'organic',
+  'kitchen waste': 'organic',
+  'biomass': 'organic',
+  'compost': 'organic',
+  // Textile
+  'textiles': 'textile',
+  'cloth': 'textile',
+  'fabric': 'textile',
+  'clothes': 'textile',
+  // E-waste
+  'e-waste': 'e_waste',
+  'ewaste': 'e_waste',
+  'electronic': 'e_waste',
+  'electronics': 'e_waste',
+  'electronic waste': 'e_waste',
+  // Hazardous
+  'hazardous waste': 'hazardous',
+  'chemical': 'hazardous',
+  'battery': 'hazardous',
+  'batteries': 'hazardous',
+  // Medical
+  'biomedical': 'medical',
+  'medical waste': 'medical',
+  // Mixed
+  'mixed waste': 'mixed',
+  'mixed scrap': 'mixed',
+  'mixed recyclables': 'mixed',
+  'multiple materials': 'mixed',
+};
+
+function normalizeCategory(raw: string): ControlledCategory {
+  if (!raw) return 'unknown';
+  const lower = raw.toLowerCase().trim();
+  if (CATEGORY_SYNONYMS[lower]) return CATEGORY_SYNONYMS[lower];
+  for (const cat of CONTROLLED_CATEGORIES) {
+    if (lower === cat || lower.startsWith(cat)) return cat;
+  }
+  // If the model says "Mixed" anything, only accept if it really IS mixed
+  if (lower.includes('mixed')) return 'mixed';
+  return 'other';
+}
+
+// -------------------------------------------------------------------
+// Typed errors thrown by analyzeWasteImage.
+// Server.ts maps these to structured HTTP response codes.
+// NEVER return a fake WasteAnalysisResult — always throw on failure.
+// -------------------------------------------------------------------
+export class GeminiTimeoutError extends Error {
+  readonly code = 'AI_TIMEOUT' as const;
+  constructor() {
+    super('AI analysis timed out. Please retry.');
+    this.name = 'GeminiTimeoutError';
+  }
+}
+
+export class GeminiUnavailableError extends Error {
+  readonly code = 'AI_UNAVAILABLE' as const;
+  constructor(reason?: string) {
+    super(reason || 'AI service is temporarily unavailable. Please retry later.');
+    this.name = 'GeminiUnavailableError';
+  }
+}
+
+export class GeminiInvalidResponseError extends Error {
+  readonly code = 'AI_INVALID_RESPONSE' as const;
+  constructor(reason?: string) {
+    super(reason || 'AI returned an unexpected response. Please retry.');
+    this.name = 'GeminiInvalidResponseError';
+  }
+}
+
+export class GeminiLowConfidenceResult extends Error {
+  readonly code = 'AI_LOW_CONFIDENCE' as const;
+  readonly result: WasteAnalysisResult;
+  constructor(result: WasteAnalysisResult) {
+    super('AI could not confidently identify this image.');
+    this.name = 'GeminiLowConfidenceResult';
+    this.result = result;
+  }
 }
 
 type GeminiLanguage = 'EN' | 'HI' | 'TE';
@@ -141,37 +301,6 @@ function languageInstruction(language: GeminiLanguage): string {
   return `The selected app language is ${selected}. Respond in the user's dominant language. Understand and naturally handle mixed Hindi-English or Telugu-English. If the user explicitly asks for another language, follow that request. For structured output, keep JSON property names in English but translate every user-facing string value into the response language.`;
 }
 
-function getUnverifiedAnalysis(language: GeminiLanguage, reason?: string): WasteAnalysisResult {
-  const copy = {
-    EN: {
-      material: 'Mixed Scrap / Unverified Waste', category: 'Mixed Waste', materialType: 'Unclassified Scrap',
-      weight: 'Requires verification at pickup', value: 'Requires material separation / pickup verification', bestFor: 'Kabadiwala / Scrap Collection',
-      disposal: 'Segregate materials into dry/metal/plastic bins or request doorstep inspection.', item: 'Scrap Material',
-      reason: reason || 'AI vision processing failed. Manual verification required.',
-    },
-    HI: {
-      material: 'मिश्रित स्क्रैप / सत्यापन रहित कचरा', category: 'मिश्रित कचरा', materialType: 'अवर्गीकृत स्क्रैप',
-      weight: 'पिकअप के समय सत्यापन आवश्यक', value: 'सामग्री अलग करना / पिकअप सत्यापन आवश्यक', bestFor: 'कबाड़ीवाला / स्क्रैप संग्रह',
-      disposal: 'कचरे को सूखे, धातु और प्लास्टिक डिब्बों में अलग करें या घर पर निरीक्षण का अनुरोध करें।', item: 'स्क्रैप सामग्री',
-      reason: reason || 'AI विज़न प्रक्रिया विफल हुई। मैन्युअल सत्यापन आवश्यक है।',
-    },
-    TE: {
-      material: 'మిశ్రమ స్క్రాప్ / ధృవీకరించని వ్యర్థం', category: 'మిశ్రమ వ్యర్థం', materialType: 'వర్గీకరించని స్క్రాప్',
-      weight: 'పికప్ సమయంలో ధృవీకరణ అవసరం', value: 'పదార్థాలను వేరు చేయడం / పికప్ ధృవీకరణ అవసరం', bestFor: 'కబాడీవాలా / స్క్రాప్ సేకరణ',
-      disposal: 'వ్యర్థాలను పొడి, లోహం మరియు ప్లాస్టిక్ బిన్‌లలో వేరు చేయండి లేదా ఇంటి తనిఖీని అభ్యర్థించండి.', item: 'స్క్రాప్ పదార్థం',
-      reason: reason || 'AI విజన్ ప్రక్రియ విఫలమైంది. మాన్యువల్ ధృవీకరణ అవసరం.',
-    },
-  }[language];
-
-  return {
-    material: copy.material, category: copy.category, material_type: copy.materialType, confidence: 0.5,
-    estimated_weight: null, weight_range_kg: copy.weight, recyclable: true,
-    recyclability_status: 'Requires Separation', best_for: copy.bestFor, estimated_value: null,
-    value_text: copy.value, disposal_instruction: copy.disposal, current_rate_per_kg: null,
-    detected_items: [copy.item], requires_verification: true, reason: copy.reason, is_unidentifiable: false,
-  };
-}
-
 export async function analyzeWasteImage(
   base64Data: string,
   mimeType: string = 'image/jpeg',
@@ -181,56 +310,80 @@ export async function analyzeWasteImage(
   const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, '');
   const ai = getGenAI();
 
+  if (!ai) {
+    // No API key configured — throw so server returns 503, not a fake result.
+    console.warn('[Gemini] GEMINI_API_KEY not set.');
+    throw new GeminiUnavailableError(
+      'AI analysis is not configured on this server. Please contact support.'
+    );
+  }
+
   // Current materials and prices for context
   const materials = db.getMaterials();
   const materialsContext = materials
     .map((m) => `${m.material_name} (${m.category}): ₹${m.current_price_per_kg}/kg`)
     .join(', ');
 
-  if (!ai) {
-    // Graceful unverified result if GEMINI_API_KEY is not configured (NEVER DEFAULT TO PET BOTTLE)
-    console.warn('[Gemini] GEMINI_API_KEY not set. Returning unverified inspection result.');
-    return getUnverifiedAnalysis(responseLanguage, responseLanguage === 'EN'
-      ? 'AI key not configured. Physical inspection required at pickup.'
-      : responseLanguage === 'HI'
-      ? 'AI कुंजी कॉन्फ़िगर नहीं है। पिकअप पर भौतिक निरीक्षण आवश्यक है।'
-      : 'AI కీ కాన్ఫిగర్ కాలేదు. పికప్ సమయంలో భౌతిక తనిఖీ అవసరం.');
-  }
-
   try {
-    const prompt = `You are EcoScan AI, an expert waste identification and scrap material appraisal vision engine for India.
-Analyze the ENTIRE uploaded image thoroughly before assigning any classification.
+    const prompt = `You are EcoScan's waste image classification engine for Indian waste segregation.
 
-  ${languageInstruction(responseLanguage)}
+${languageInstruction(responseLanguage)}
 
 Current scrap mandi benchmark rates in India: [${materialsContext}].
 
-ROBUST CLASSIFICATION & SAFETY RULES:
-1. Examine all objects and materials across the ENTIRE image field.
-2. Detect whether the image contains single or multiple materials:
-   - PET bottles (Polyethylene Terephthalate, e.g. transparent water/soda bottles)
-   - HDPE plastic (High-Density Polyethylene, e.g. milk jugs, shampoo bottles)
-   - PP plastic (Polypropylene, e.g. food containers, bottle caps)
-   - Cardboard / Paper (Kraft boxes, newspapers)
-   - Glass (beer, wine, sauce bottles)
-   - Aluminium (beverage cans, foil)
-   - Steel / Metal (heavy iron rods, saria, metal mesh, scrap pieces)
-   - E-Waste (circuit boards, copper wiring, electronic components)
-   - Organic waste (food peels, garden waste)
-   - Mixed Waste / Mixed Scrap (containing multiple significantly different materials like metal pieces, wires, plastic fragments, mesh, etc.)
-   - Other / Unknown
-3. CRITICAL: If the image contains a pile, bundle, or mix of multiple distinct materials (e.g. metal pieces, wires, plastic fragments, mesh), you MUST classify it as "Mixed Scrap" with category "Mixed Waste". NEVER call mixed scrap or metal pieces a "Plastic PET Beverage Bottle".
-4. CONFIDENCE: Provide an accurate confidence decimal between 0.00 and 1.00.
-   - If confidence is low (< 0.45), or image is blurry, pitch black, or ambiguous, set is_unidentifiable: true, confidence: confidence, and reason: "Unable to confidently identify the waste. Please upload a clearer image."
-5. WEIGHT ESTIMATION:
-   - For a single item (e.g., 1 PET bottle), estimate realistic weight (e.g. 0.03 kg) and set weight_range_kg: "0.02 - 0.05 kg".
-   - For multiple items or a pile of scrap where exact scale/quantity cannot be visually determined, DO NOT invent a fake exact weight. Set estimated_weight: null, requires_verification: true, and weight_range_kg: "Requires verification at pickup".
-6. PRICE CALCULATION:
-   - If material is specific and weight is estimated, calculate value = weight * current_rate_per_kg.
-   - If material is mixed scrap or scale is unknown, set current_rate_per_kg: null, estimated_value: null, and value_text: "Requires material separation / pickup verification".
-   - Clearly mark all prices as ESTIMATES.
+═══════════════════════════════════════════════════════
+CRITICAL IMAGE CLASSIFICATION RULES — READ CAREFULLY
+═══════════════════════════════════════════════════════
 
-Respond strictly in JSON matching the schema.`;
+1. ANALYZE ONLY THIS IMAGE. Do NOT use:
+   - The filename
+   - Any previous scan result
+   - Any conversation history
+   - Any assumption not visible in the image
+
+2. IDENTIFY THE PRIMARY WASTE TYPE visible in the image.
+
+3. SINGLE MATERIAL RULE (MOST IMPORTANT):
+   If ALL objects in the image are clearly the same material type, classify as THAT MATERIAL — NOT as "mixed".
+   Examples:
+   - Multiple plastic bottles → category: "plastic" (NOT "mixed")
+   - Several cardboard boxes → category: "cardboard" (NOT "mixed")
+   - A pile of metal cans → category: "metal" (NOT "mixed")
+   - Lots of newspapers → category: "paper" (NOT "mixed")
+   Having MANY objects of the SAME TYPE is NOT mixed waste.
+
+4. MIXED WASTE RULE:
+   Only use category "mixed" when the image contains MULTIPLE CLEARLY DISTINCT material types simultaneously visible.
+   Example of genuine mixed: plastic bottle + metal can + newspaper in the same frame → "mixed".
+   If uncertain whether materials are distinct, classify by the DOMINANT visible material.
+
+5. UNCLEAR IMAGE RULE:
+   If the image is blurry, too dark, too far away, mostly empty, or not a waste item, set:
+   - is_unidentifiable: true
+   - confidence: a low value (e.g. 0.20)
+   - reason: explanation of why
+
+6. CONFIDENCE RULE:
+   Provide an honest confidence decimal between 0.00 and 1.00.
+   - Clear single-item image: 0.85–0.99
+   - Slightly ambiguous: 0.60–0.84
+   - Poor image quality: 0.20–0.59 (set is_unidentifiable: true if < 0.50)
+
+7. visible_materials[] field:
+   List ALL distinct material types you can actually see in the image.
+   For a bottle pile: ["plastic"]
+   For a mixed bin: ["plastic", "metal", "cardboard"]
+   This array drives the mixed-waste classification, not item count.
+
+8. WEIGHT ESTIMATION:
+   - For a single identifiable item, estimate realistic weight in kg (e.g. 0.03 for a PET bottle).
+   - For large piles or mixed scrap where scale is unknown: set estimated_weight null, requires_verification: true.
+
+9. PRICE CALCULATION:
+   - If specific material and weight known: calculate value = weight × rate_per_kg.
+   - If mixed or scale unknown: set current_rate_per_kg null, estimated_value null.
+
+Respond strictly in the JSON schema provided.`;
 
     const imagePart = {
       inlineData: {
@@ -240,27 +393,82 @@ Respond strictly in JSON matching the schema.`;
     };
 
     const generateImageRequest = () => ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-3.6-flash',
       contents: { parts: [imagePart, { text: prompt }] },
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            material: { type: Type.STRING },
-            category: { type: Type.STRING },
-            material_type: { type: Type.STRING },
-            confidence: { type: Type.NUMBER },
-            estimated_weight: { type: Type.NUMBER },
-            weight_range_kg: { type: Type.STRING },
-            recyclable: { type: Type.BOOLEAN },
-            recyclability_status: { type: Type.STRING },
-            best_for: { type: Type.STRING },
-            disposal_instruction: { type: Type.STRING },
-            detected_items: { type: Type.ARRAY, items: { type: Type.STRING } },
-            requires_verification: { type: Type.BOOLEAN },
-            reason: { type: Type.STRING },
-            is_unidentifiable: { type: Type.BOOLEAN },
+            material: {
+              type: Type.STRING,
+              description: 'Specific name of the primary waste material visible (e.g. "PET plastic bottles", "corrugated cardboard")',
+            },
+            category: {
+              type: Type.STRING,
+              description: 'Primary category: plastic | paper | cardboard | metal | glass | organic | textile | e_waste | hazardous | medical | mixed | other | unknown',
+            },
+            material_type: {
+              type: Type.STRING,
+              description: 'Specific material sub-type (e.g. "PET #1", "HMS Ferrous Steel")',
+            },
+            confidence: {
+              type: Type.NUMBER,
+              description: 'Classification confidence 0.00–1.00',
+            },
+            estimated_weight: {
+              type: Type.NUMBER,
+              description: 'Estimated weight in kg for single identifiable items. Omit or null for large piles.',
+            },
+            weight_range_kg: {
+              type: Type.STRING,
+              description: 'Human-readable weight range (e.g. "0.02–0.05 kg") or "Requires verification at pickup"',
+            },
+            recyclable: {
+              type: Type.BOOLEAN,
+            },
+            recyclability_status: {
+              type: Type.STRING,
+              description: 'One of: Highly Recyclable | Recyclable | Conditionally Recyclable | Special Disposal Required | Not Recyclable | Requires Separation',
+            },
+            best_for: {
+              type: Type.STRING,
+            },
+            estimated_value: {
+              type: Type.NUMBER,
+              description: 'Estimated resale value in ₹. Null if unknown.',
+            },
+            value_text: {
+              type: Type.STRING,
+            },
+            current_rate_per_kg: {
+              type: Type.NUMBER,
+              description: 'Current scrap mandi rate in ₹/kg. Null if mixed or unknown.',
+            },
+            disposal_instruction: {
+              type: Type.STRING,
+            },
+            detected_items: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: 'List of specific items identified in the image',
+            },
+            visible_materials: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: 'List of distinct material types visible (e.g. ["plastic"] or ["plastic","metal"])',
+            },
+            requires_verification: {
+              type: Type.BOOLEAN,
+            },
+            reason: {
+              type: Type.STRING,
+              description: 'Required if is_unidentifiable is true. Explain why classification failed.',
+            },
+            is_unidentifiable: {
+              type: Type.BOOLEAN,
+              description: 'Set true only if image is unclear, too dark, blurry, or cannot be reliably classified',
+            },
           },
           required: [
             'material',
@@ -269,27 +477,88 @@ Respond strictly in JSON matching the schema.`;
             'recyclable',
             'disposal_instruction',
             'detected_items',
+            'visible_materials',
           ],
         },
       },
     });
 
-    const response = (await withGeminiRetries(() => {
+    // Single attempt with a 20 s timeout (no vision retries — the user retries via the button).
+    // Frontend has a 25 s timeout, so the backend will always respond before the frontend gives up.
+    let response: any;
+    try {
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini API call timed out after 8 seconds')), 8000)
+        setTimeout(() => reject(new GeminiTimeoutError()), 20000)
       );
-      return Promise.race([generateImageRequest(), timeoutPromise]);
-    }, responseLanguage)) as any;
+      response = await Promise.race([generateImageRequest(), timeoutPromise]);
+    } catch (timeoutErr) {
+      if (timeoutErr instanceof GeminiTimeoutError) throw timeoutErr;
+      // Classify Gemini SDK errors
+      if (isGeminiTemporaryError(timeoutErr)) {
+        throw new GeminiUnavailableError(localizedTemporaryMessage(responseLanguage));
+      }
+      throw timeoutErr;
+    }
 
-    const jsonText = response.text || '{}';
-    const parsed = JSON.parse(jsonText);
+    const jsonText = response?.text;
+    if (!jsonText || jsonText.trim() === '' || jsonText.trim() === '{}') {
+      throw new GeminiInvalidResponseError('AI returned an empty response.');
+    }
 
-    const isLowConfidence = parsed.is_unidentifiable || (parsed.confidence !== undefined && parsed.confidence < 0.45);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      throw new GeminiInvalidResponseError('AI returned malformed JSON.');
+    }
+
+    // --- Validate required fields ---
+    if (!parsed || typeof parsed !== 'object') {
+      throw new GeminiInvalidResponseError('AI response was not a valid object.');
+    }
+    if (typeof parsed.material !== 'string' || !parsed.material.trim()) {
+      throw new GeminiInvalidResponseError('AI response missing required field: material.');
+    }
+    if (typeof parsed.category !== 'string' || !parsed.category.trim()) {
+      throw new GeminiInvalidResponseError('AI response missing required field: category.');
+    }
+    if (typeof parsed.confidence !== 'number' || parsed.confidence < 0 || parsed.confidence > 1) {
+      throw new GeminiInvalidResponseError('AI response has invalid confidence value.');
+    }
+
+    // --- Normalize category through controlled taxonomy ---
+    const normalizedCategory = normalizeCategory(parsed.category);
+
+    // --- Determine visible_materials for isMixed decision ---
+    const visibleMaterials: string[] = Array.isArray(parsed.visible_materials)
+      ? parsed.visible_materials.map((m: any) => String(m).toLowerCase().trim()).filter(Boolean)
+      : [];
+
+    // MIXED = normalized category is 'mixed' AND there are genuinely multiple distinct material types
+    // visible, OR the visible_materials array contains 2+ distinct types.
+    // Multiple items of the SAME type (e.g. 5 plastic bottles) is NOT mixed.
+    const distinctMaterialTypes = new Set(visibleMaterials.map((m) => normalizeCategory(m)));
+    // Remove 'other', 'unknown' from distinctness count for isMixed decision
+    distinctMaterialTypes.delete('other');
+    distinctMaterialTypes.delete('unknown');
+
+    const isMixed =
+      normalizedCategory === 'mixed' && distinctMaterialTypes.size >= 2;
+
+    // If Gemini says mixed but only one distinct material type is visible, override it
+    const effectiveCategory: ControlledCategory = isMixed ? 'mixed' : (
+      normalizedCategory === 'mixed' && distinctMaterialTypes.size < 2
+        ? (distinctMaterialTypes.size === 1 ? [...distinctMaterialTypes][0] : 'other')
+        : normalizedCategory
+    );
+
+    const isLowConfidence = parsed.is_unidentifiable || parsed.confidence < MIN_CONFIDENCE;
 
     if (isLowConfidence) {
-      return {
-        material: 'Unidentified / Ambiguous Waste',
-        category: 'Other',
+      // Throw a typed low-confidence result — server returns 422, frontend shows UNCERTAIN state.
+      const lowConfResult: WasteAnalysisResult = {
+        material: 'Unable to reliably identify this item',
+        category: 'unknown',
         material_type: 'Unknown',
         confidence: Number((parsed.confidence || 0.3).toFixed(2)),
         estimated_weight: null,
@@ -301,27 +570,24 @@ Respond strictly in JSON matching the schema.`;
         value_text: 'Rate unavailable',
         current_rate_per_kg: null,
         disposal_instruction:
-          parsed.reason || 'Unable to confidently identify the waste. Please upload a clearer image.',
+          parsed.reason || 'Unable to reliably identify this item. Please upload a clearer, well-lit image.',
         detected_items: [],
+        visible_materials: [],
         requires_verification: true,
-        reason: 'Unable to confidently identify the waste. Please upload a clearer image.',
+        reason: parsed.reason || 'Unable to reliably identify this item. Please upload a clearer, well-lit image.',
         is_unidentifiable: true,
       };
+      throw new GeminiLowConfidenceResult(lowConfResult);
     }
 
-    // Match with current dynamic scrap rate from database
-    const categoryLower = (parsed.category || '').toLowerCase();
+    // --- Match with current dynamic scrap rate from database ---
     const materialLower = (parsed.material || '').toLowerCase();
-    const isMixed =
-      categoryLower.includes('mixed') ||
-      materialLower.includes('mixed') ||
-      (Array.isArray(parsed.detected_items) && parsed.detected_items.length > 2);
 
     const matchedMat = materials.find((m) =>
       materialLower.includes(m.material_name.toLowerCase())
-    ) || materials.find((m) => m.category.toLowerCase() === categoryLower);
+    ) || materials.find((m) => m.category.toLowerCase() === effectiveCategory);
 
-    const currentRate = matchedMat ? matchedMat.current_price_per_kg : null;
+    const currentRate = isMixed ? null : (matchedMat ? matchedMat.current_price_per_kg : null);
     const isWeightEstimated = typeof parsed.estimated_weight === 'number' && parsed.estimated_weight > 0;
     const estWeight = isWeightEstimated ? Number(parsed.estimated_weight.toFixed(2)) : null;
     const estValue = estWeight && currentRate ? Number((estWeight * currentRate).toFixed(2)) : null;
@@ -330,20 +596,22 @@ Respond strictly in JSON matching the schema.`;
       parsed.weight_range_kg ||
       (estWeight ? `~${estWeight} kg` : 'Requires verification at pickup');
 
-    const valueText = estValue !== null
-      ? `₹${estValue.toFixed(2)} (Estimated)`
-      : isMixed
-      ? 'Requires material separation / pickup verification'
-      : currentRate !== null
-      ? 'Weight verification required'
-      : 'Rate unavailable';
+    const valueText = parsed.value_text || (
+      estValue !== null
+        ? `₹${estValue.toFixed(2)} (Estimated)`
+        : isMixed
+        ? 'Requires material separation / pickup verification'
+        : currentRate !== null
+        ? 'Weight verification required'
+        : 'Rate unavailable'
+    );
 
     const recStatus =
       parsed.recyclability_status ||
       (isMixed
         ? 'Requires Separation'
         : parsed.recyclable
-        ? categoryLower.includes('metal')
+        ? effectiveCategory === 'metal'
           ? 'Highly Recyclable'
           : 'Recyclable'
         : 'Not Recyclable');
@@ -356,11 +624,18 @@ Respond strictly in JSON matching the schema.`;
         ? 'Recycling'
         : 'Home / City Composting');
 
+    // Use effectiveCategory label for display (capitalize first letter)
+    const categoryDisplay = isMixed
+      ? 'Mixed Waste'
+      : effectiveCategory === 'e_waste'
+      ? 'E-Waste'
+      : effectiveCategory.charAt(0).toUpperCase() + effectiveCategory.slice(1);
+
     return {
-      material: isMixed ? 'Mixed Scrap' : parsed.material || 'Scrap Material',
-      category: isMixed ? 'Mixed Waste' : parsed.category || 'Other',
-      material_type: parsed.material_type || (isMixed ? 'Mixed Scrap' : 'General Scrap'),
-      confidence: Number(Math.min(0.99, Math.max(0.45, parsed.confidence || 0.85)).toFixed(2)),
+      material: isMixed ? 'Mixed Waste (Multiple Materials)' : parsed.material.trim(),
+      category: categoryDisplay,
+      material_type: parsed.material_type || (isMixed ? 'Mixed Materials' : parsed.material),
+      confidence: Number(Math.min(0.99, Math.max(MIN_CONFIDENCE, parsed.confidence)).toFixed(2)),
       estimated_weight: estWeight,
       weight_range_kg: weightRange,
       recyclable: Boolean(parsed.recyclable),
@@ -375,25 +650,40 @@ Respond strictly in JSON matching the schema.`;
       detected_items:
         Array.isArray(parsed.detected_items) && parsed.detected_items.length > 0
           ? parsed.detected_items
-          : [parsed.material || 'Scrap Material'],
+          : [parsed.material || 'Waste Item'],
+      visible_materials: visibleMaterials,
       requires_verification: Boolean(parsed.requires_verification || isMixed || !estWeight),
       reason: parsed.reason,
       is_unidentifiable: false,
     };
   } catch (error) {
-    const temporaryFailure = error instanceof GeminiTemporaryError;
-    console.error('[Gemini] Vision identification error:', {
-      temporary: temporaryFailure,
-      status: getGeminiErrorDetails(error).status,
-    });
-    // REMOVE HARDCODED PET BOTTLE FALLBACK. Return unverified mixed scrap result.
-    return getUnverifiedAnalysis(responseLanguage, temporaryFailure
-      ? responseLanguage === 'EN'
-        ? TEMPORARY_GEMINI_MESSAGE
-        : responseLanguage === 'HI'
-        ? 'EcoAI अभी व्यस्त है। कृपया थोड़ी देर बाद फिर प्रयास करें।'
-        : 'EcoAI ప్రస్తుతం బిజీగా ఉంది. దయచేసి కొద్దిసేపటి తర్వాత ప్రయత్నించండి.'
-      : undefined);
+    // Re-throw typed errors as-is so server.ts can map them to HTTP codes.
+    if (
+      error instanceof GeminiTimeoutError ||
+      error instanceof GeminiUnavailableError ||
+      error instanceof GeminiInvalidResponseError ||
+      error instanceof GeminiLowConfidenceResult
+    ) {
+      throw error;
+    }
+
+    // Translate raw Gemini SDK errors to typed errors.
+    const { status } = getGeminiErrorDetails(error);
+    console.error('[Gemini] Vision identification error:', { status, model: 'gemini-3.6-flash' });
+
+    if (isGeminiModelNotFoundError(error)) {
+      throw new GeminiUnavailableError(
+        'Gemini model not found (HTTP 404). The model name may be invalid or unavailable in your region.'
+      );
+    }
+    if (isGeminiTemporaryError(error)) {
+      throw new GeminiUnavailableError(localizedTemporaryMessage(responseLanguage));
+    }
+    if (isGeminiAuthenticationError(error)) {
+      throw new GeminiUnavailableError('AI authentication failed. Please check the API key configuration.');
+    }
+
+    throw new GeminiInvalidResponseError((error as Error)?.message);
   }
 }
 
@@ -403,19 +693,10 @@ export async function askEcoAiChat(
   language: GeminiLanguage = 'EN'
 ): Promise<string> {
   const responseLanguage = normalizeLanguage(language);
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not configured. Please create a .env file in your project root folder and set GEMINI_API_KEY=your_actual_api_key.');
+  const ai = getGenAI();
+  if (!ai) {
+    throw new Error('GEMINI_API_KEY environment variable is not configured. Please set it in your .env file.');
   }
-
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
 
   try {
     const materials = db.getMaterials();
@@ -464,7 +745,7 @@ CRITICAL BEHAVIORAL DIRECTIVES:
 
     const response = await withGeminiRetries(() =>
       ai.models.generateContent({
-        model: 'gemini-3.7-flash',
+        model: 'gemini-3.6-flash',
         contents: contents,
         config: {
           systemInstruction: systemPrompt,

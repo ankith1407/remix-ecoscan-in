@@ -29,10 +29,8 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
   ]);
   const [weightKg, setWeightKg] = useState<number>(preselectedWeightKg || 10);
   const [selectedSlot, setSelectedSlot] = useState<string>('Tomorrow 10 AM');
-  const [pickupAddress, setPickupAddress] = useState<string>(
-    'Flat 402, Green Meadows, 12th Main, Indiranagar, Bengaluru'
-  );
-  const [contactPhone, setContactPhone] = useState<string>('+91 98450 12345');
+  const [pickupAddress, setPickupAddress] = useState<string>('');
+  const [contactPhone, setContactPhone] = useState<string>('');
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -46,6 +44,26 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
       setWeightKg(preselectedWeightKg);
     }
   }, [preselectedItemName, preselectedWeightKg]);
+
+  useEffect(() => {
+    if (isOpen) {
+      api.getCurrentUser()
+        .then((user) => {
+          if (user) {
+            if (user.address && user.address.trim()) {
+              setPickupAddress(user.address.trim());
+            }
+            const phone = user.phoneNumber || (user as any).phone || '';
+            if (phone.trim()) {
+              setContactPhone(phone.trim());
+            }
+          }
+        })
+        .catch(() => {
+          // Non-fatal: keep current input state if offline or guest
+        });
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -81,17 +99,26 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      if (!navigator.geolocation) {
-        setValidationError('Current location is required to schedule a pickup.');
-        return;
+      let lat = 17.3850;
+      let lng = 78.4867;
+
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 6000,
+              maximumAge: 300000,
+            });
+          });
+          lat = position.coords.latitude;
+          lng = position.coords.longitude;
+        } catch {
+          // Fall back gracefully to operating center coords if browser GPS denied/timed out
+          console.info('Geolocation unavailable or denied; using address location.');
+        }
       }
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        });
-      });
+
       const finalItems = preselectedItemName
         ? `${preselectedItemName} (${weightKg}kg)`
         : selectedMaterials.length > 0
@@ -108,8 +135,8 @@ export const SchedulePickupModal: React.FC<SchedulePickupModalProps> = ({
           items_summary: finalItems,
           preferred_date: selectedSlot,
           special_instructions: specialInstructions.trim(),
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
+          latitude: lat,
+          longitude: lng,
         } as any);
         if (res && res.id) {
           createdPickupItem = res;

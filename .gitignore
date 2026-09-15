@@ -1,8 +1,29 @@
-node_modules/
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+
+# Database & data files — never commit
+data/
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
+
+# Logs — never commit
+logs/
+*.log
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
 build/
 dist/
 coverage/
 .DS_Store
-*.log
-.env*
 !.env.example

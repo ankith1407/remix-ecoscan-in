@@ -54,6 +54,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
   const [newMatCategory, setNewMatCategory] = useState('Plastic');
   const [newMatPrice, setNewMatPrice] = useState('25');
 
+  // Collector creation modal state
+  const [showAddCollector, setShowAddCollector] = useState(false);
+  const [newColName, setNewColName] = useState('');
+  const [newColPhone, setNewColPhone] = useState('');
+  const [newColArea, setNewColArea] = useState('Jubilee Hills, Banjara Hills, Hyderabad');
+  const [newColStatus, setNewColStatus] = useState<'VERIFIED' | 'PENDING'>('VERIFIED');
+
   // Partner creation modal state
   const [showAddPartner, setShowAddPartner] = useState(false);
   const [newPartnerName, setNewPartnerName] = useState('');
@@ -130,6 +137,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
       if (onRefresh) onRefresh();
     } catch (err: any) {
       alert(err.message || 'Failed to update collector status');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAddCollectorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newColName.trim() || !newColPhone.trim()) {
+      alert('Please enter business name and phone number');
+      return;
+    }
+    try {
+      setActionLoading('new_collector');
+      await api.addCollector({
+        name: newColName.trim(),
+        phone: newColPhone.trim(),
+        service_area: newColArea.trim() || 'Hyderabad Central',
+        verification_status: newColStatus,
+      });
+      setShowAddCollector(false);
+      setNewColName('');
+      setNewColPhone('');
+      await loadData();
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add collector');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSeedDefaultCollectorsSubmit = async () => {
+    try {
+      setActionLoading('seed_collectors');
+      await api.seedDefaultCollectors();
+      await loadData();
+      if (onRefresh) onRefresh();
+      alert('Default Hyderabad scrap partners seeded successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to seed collectors');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleApproveAllPendingCollectors = async () => {
+    try {
+      setActionLoading('approve_all');
+      const pendingCols = collectors.filter((c) => c.verification_status === 'PENDING');
+      for (const c of pendingCols) {
+        await api.verifyCollector(c.id, 'VERIFIED');
+      }
+      const unlinked = users.filter((u) => u.role === 'collector' && !collectors.some((c) => c.user_id === u.id));
+      for (const u of unlinked) {
+        await api.addCollector({
+          name: u.name,
+          phone: u.phone || '+91 90000 00000',
+          user_id: u.id,
+          verification_status: 'VERIFIED',
+        });
+      }
+      await loadData();
+      if (onRefresh) onRefresh();
+      alert('All pending kabadiwalas/collectors have been approved and verified!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to approve collectors');
     } finally {
       setActionLoading(null);
     }
@@ -410,6 +483,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
       {/* 4. Tab: Overview & Analytics */}
       {activeTab === 'overview' && (
         <div className="flex flex-col gap-4">
+          {/* Pending Collector & User Approvals Card */}
+          {(collectors.some((c) => c.verification_status === 'PENDING') ||
+            users.some((u) => u.role === 'collector' && !collectors.some((c) => c.user_id === u.id))) && (
+            <div className="p-4 rounded-xl bg-[#FEF3C7] border border-[#FDE68A] flex flex-col gap-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#D97706] text-[22px]">pending_actions</span>
+                  <div>
+                    <h3 className="text-xs font-bold text-[#172019] uppercase tracking-wider">
+                      Pending Kabadiwala Approvals ({collectors.filter((c) => c.verification_status === 'PENDING').length + users.filter((u) => u.role === 'collector' && !collectors.some((c) => c.user_id === u.id)).length})
+                    </h3>
+                    <p className="text-[11px] text-[#65736A]">Approval required to allow accepting doorstep scrap pickups</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleApproveAllPendingCollectors}
+                  disabled={actionLoading === 'approve_all'}
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg bg-[#D97706] text-[#FFFFFF] font-bold text-xs hover:bg-[#B45309] shadow-xs"
+                >
+                  Approve All Pending
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {collectors.filter((c) => c.verification_status === 'PENDING').map((c) => (
+                  <div key={c.id} className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#FDE68A] flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-[#172019]">{c.name}</span>
+                      <span className="text-[11px] text-[#65736A] block">{c.phone} • {c.service_area}</span>
+                    </div>
+                    <button
+                      onClick={() => handleVerifyCollector(c.id, 'VERIFIED')}
+                      disabled={actionLoading === c.id}
+                      type="button"
+                      className="px-3 py-1 rounded bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-[11px] font-bold shadow-xs"
+                    >
+                      Approve & Verify
+                    </button>
+                  </div>
+                ))}
+
+                {users.filter((u) => u.role === 'collector' && !collectors.some((c) => c.user_id === u.id)).map((u) => (
+                  <div key={u.id} className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#FDE68A] flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-[#172019]">{u.name} ({u.email})</span>
+                      <span className="text-[11px] text-[#65736A] block">Phone: {u.phone || 'N/A'}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setActionLoading(u.id);
+                        api.addCollector({
+                          name: u.name,
+                          phone: u.phone || '+91 90000 00000',
+                          user_id: u.id,
+                          verification_status: 'VERIFIED',
+                        })
+                        .then(() => loadData())
+                        .catch((e) => alert(e.message))
+                        .finally(() => setActionLoading(null));
+                      }}
+                      disabled={actionLoading === u.id}
+                      type="button"
+                      className="px-3 py-1 rounded bg-[#D97706] hover:bg-[#B45309] text-[#FFFFFF] text-[11px] font-bold shadow-xs"
+                    >
+                      Approve & Link Profile
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Waste By Category Card */}
           <div className="p-4 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col gap-3 shadow-xs">
             <div className="flex items-center justify-between">
@@ -468,16 +613,162 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
       {/* 5. Tab: Collectors Verification */}
       {activeTab === 'collectors' && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-[#172019] uppercase tracking-wider">
-              Registered Scrap Partners ({collectors.length})
-            </h3>
-            <span className="text-[11px] text-[#65736A]">
-              {collectors.filter((c) => c.verification_status === 'VERIFIED').length} Verified
-            </span>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-bold text-[#172019] uppercase tracking-wider">
+                Registered Scrap Partners ({collectors.length})
+              </h3>
+              <span className="text-[11px] text-[#65736A]">
+                {collectors.filter((c) => c.verification_status === 'VERIFIED').length} Verified
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {collectors.length === 0 && (
+                <button
+                  onClick={handleSeedDefaultCollectorsSubmit}
+                  disabled={actionLoading === 'seed_collectors'}
+                  type="button"
+                  className="px-2.5 py-1.5 rounded-lg bg-[#E8F3EB] text-[#174D35] border border-[#DCE5DE] text-xs font-bold hover:bg-[#D7E8DC] transition-all shrink-0"
+                >
+                  Seed Hyderabad Hubs
+                </button>
+              )}
+              <button
+                onClick={() => setShowAddCollector(!showAddCollector)}
+                type="button"
+                className="px-3 py-1.5 rounded-lg bg-[#3FA66B] text-[#FFFFFF] text-xs font-bold hover:bg-[#174D35] flex items-center gap-1 shadow-xs shrink-0"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                Add Scrap Partner
+              </button>
+            </div>
           </div>
 
-          {collectors.map((c) => (
+          {/* Add Collector Modal / Form */}
+          {showAddCollector && (
+            <form
+              onSubmit={handleAddCollectorSubmit}
+              className="p-4 rounded-xl bg-[#E8F3EB] border border-[#DCE5DE] flex flex-col gap-3 shadow-xs"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#172019]">Register New Scrap Partner / Collector</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCollector(false)}
+                  className="text-xs text-[#65736A] hover:text-[#172019]"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[#65736A] block mb-0.5 font-semibold">Business Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Green Earth Kabadiwala Hub"
+                    value={newColName}
+                    onChange={(e) => setNewColName(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] text-xs font-bold focus:border-[#3FA66B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#65736A] block mb-0.5 font-semibold">Phone Number</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="+91 98765 43210"
+                    value={newColPhone}
+                    onChange={(e) => setNewColPhone(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] text-xs font-bold focus:border-[#3FA66B] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[#65736A] block mb-0.5 font-semibold">Service Area</label>
+                  <input
+                    type="text"
+                    placeholder="Jubilee Hills, Banjara Hills, Hyderabad"
+                    value={newColArea}
+                    onChange={(e) => setNewColArea(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] text-xs font-bold focus:border-[#3FA66B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#65736A] block mb-0.5 font-semibold">Verification Status</label>
+                  <select
+                    value={newColStatus}
+                    onChange={(e) => setNewColStatus(e.target.value as any)}
+                    className="w-full px-2.5 py-1.5 rounded bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] text-xs font-bold focus:border-[#3FA66B] focus:outline-none"
+                  >
+                    <option value="VERIFIED">VERIFIED (Approved)</option>
+                    <option value="PENDING">PENDING (Requires Review)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="py-2 rounded bg-[#3FA66B] text-[#FFFFFF] text-xs font-bold hover:bg-[#174D35] shadow-xs"
+              >
+                Save & Register Scrap Partner
+              </button>
+            </form>
+          )}
+
+          {/* Registered User Accounts with role === 'collector' awaiting collector profile linking */}
+          {users.filter((u) => u.role === 'collector' && !collectors.some((c) => c.user_id === u.id)).map((unlinkedUser) => (
+            <div key={unlinkedUser.id} className="p-3.5 rounded-xl bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-between gap-2 shadow-xs">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#D97706] block">Registered Collector User Awaiting Approval</span>
+                <h4 className="text-xs font-bold text-[#172019]">{unlinkedUser.name} ({unlinkedUser.email})</h4>
+                <p className="text-[11px] text-[#65736A] mt-0.5">Phone: {unlinkedUser.phone || 'N/A'}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setActionLoading(unlinkedUser.id);
+                  api.addCollector({
+                    name: unlinkedUser.name,
+                    phone: unlinkedUser.phone || '+91 90000 00000',
+                    user_id: unlinkedUser.id,
+                    verification_status: 'VERIFIED',
+                  })
+                  .then(() => loadData())
+                  .catch((e) => alert(e.message))
+                  .finally(() => setActionLoading(null));
+                }}
+                disabled={actionLoading === unlinkedUser.id}
+                className="px-3 py-1.5 rounded-lg bg-[#D97706] text-[#FFFFFF] font-bold text-xs hover:bg-[#B45309] shadow-xs shrink-0"
+                type="button"
+              >
+                Approve & Link Profile
+              </button>
+            </div>
+          ))}
+
+          {collectors.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center justify-center text-center gap-3 shadow-xs">
+              <span className="material-symbols-outlined text-[36px] text-[#3FA66B]">local_shipping</span>
+              <div>
+                <h4 className="text-sm font-bold text-[#172019]">No Scrap Partners Found</h4>
+                <p className="text-xs text-[#65736A] mt-0.5 max-w-sm mx-auto">
+                  Click "Add Scrap Partner" above or click below to populate default Hyderabad recycling depots.
+                </p>
+              </div>
+              <button
+                onClick={handleSeedDefaultCollectorsSubmit}
+                disabled={actionLoading === 'seed_collectors'}
+                type="button"
+                className="px-4 py-2 rounded-xl bg-[#3FA66B] text-[#FFFFFF] text-xs font-bold hover:bg-[#174D35] shadow-xs"
+              >
+                Seed Default Hyderabad Scrap Partners
+              </button>
+            </div>
+          ) : (
+            collectors.map((c) => (
             <div
               key={c.id}
               className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col gap-2.5 shadow-xs"
@@ -553,7 +844,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
                 )}
               </div>
             </div>
-          ))}
+          )))}
         </div>
       )}
 
@@ -746,7 +1037,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
                   </span>
                 </div>
                 <p className="text-[11px] text-[#65736A] mt-0.5">{u.email}</p>
-                <p className="text-[10px] text-[#65736A] mt-0.5">{u.address || 'Bengaluru'}</p>
+                <p className="text-[10px] text-[#65736A] mt-0.5">{u.address || 'Hyderabad'}</p>
               </div>
 
               <div className="text-right">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { useI18n } from '../i18n';
 
@@ -30,11 +30,30 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const quickQuestions = [
     'How to prep empty ghee & oil jars for scrap?',
     'Current market value for 10kg cardboard cartons',
     'Where to safely recycle swollen smartphone batteries?',
   ];
+
+  // Auto-focus input on open
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
+  // Auto scroll to bottom when messages update
+  useEffect(() => {
+    if (isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isTyping, isOpen]);
 
   const handleSend = async (textToSend?: string) => {
     const query = textToSend || inputText;
@@ -96,15 +115,15 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
       {/* Drawer / Modal */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 bg-[#172019]/60 backdrop-blur-md flex items-end sm:items-center justify-center p-4 transition-opacity animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-[#172019]/60 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4 transition-opacity animate-in fade-in duration-200"
           onClick={onClose}
         >
           <div
-            className="w-full max-w-md bg-[#FFFFFF] text-[#172019] rounded-2xl p-5 shadow-2xl flex flex-col gap-4 relative border border-[#DCE5DE] max-h-[85vh]"
+            className="w-full max-w-md bg-[#FFFFFF] text-[#172019] rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3 sm:gap-4 relative border border-[#DCE5DE] max-h-[85vh] sm:max-h-[85vh] h-[75dvh] sm:h-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-[#DCE5DE]">
+            <div className="flex items-center justify-between pb-2 border-b border-[#DCE5DE] shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-full bg-[#E8F3EB] border border-[#DCE5DE] text-[#3FA66B] flex items-center justify-center shadow-xs">
                   <span className="material-symbols-outlined text-[24px]">smart_toy</span>
@@ -128,7 +147,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
             </div>
 
             {/* Chat message stream */}
-            <div className="flex flex-col gap-2.5 overflow-y-auto max-h-56 pr-1 scrollbar-none">
+            <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto pr-1 scrollbar-none">
               {messages.map((m) => (
                 <div
                   key={m.id}
@@ -147,10 +166,11 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
                   EcoAi is analyzing waste regulations & scrap market...
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Quick Inquiry Suggestions */}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 shrink-0">
               <span className="text-[10px] uppercase tracking-wider text-[#65736A] font-bold">
                 Quick Inquiries for EcoAi:
               </span>
@@ -159,7 +179,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
                   <button
                     key={idx}
                     onClick={() => handleSend(q)}
-                    className="text-left px-3 py-2 rounded-lg bg-[#F5F8F4] hover:bg-[#E8F3EB] text-[#172019] text-xs transition-colors flex items-center justify-between border border-[#DCE5DE]"
+                    className="text-left px-3 py-1.5 rounded-lg bg-[#F5F8F4] hover:bg-[#E8F3EB] text-[#172019] text-xs transition-colors flex items-center justify-between border border-[#DCE5DE]"
                     type="button"
                   >
                     <span className="truncate pr-2">{q}</span>
@@ -172,8 +192,9 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
             </div>
 
             {/* Input field */}
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 shrink-0">
               <input
+                ref={inputRef}
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -184,7 +205,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
               <button
                 aria-label="Send Query to EcoAi"
                 onClick={() => handleSend()}
-                className="w-11 h-11 rounded-xl bg-[#3FA66B] text-[#FFFFFF] flex items-center justify-center shadow-md hover:bg-[#174D35] active:scale-95 transition-all"
+                className="w-11 h-11 rounded-xl bg-[#3FA66B] text-[#FFFFFF] flex items-center justify-center shadow-md hover:bg-[#174D35] active:scale-95 transition-all cursor-pointer"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[20px] font-bold">send</span>

@@ -1,0 +1,40 @@
+{
+  "name": "EcoScan IN",
+  "short_name": "EcoScan",
+  "description": "AI waste scanning, scrap price intelligence & doorstep kabadiwala pickup for India",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0F0D",
+  "theme_color": "#B8E600",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en-IN",
+  "categories": ["productivity", "utilities", "lifestyle"],
+  "icons": [
+    {
+      "src": "/assets/aistudio/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/aistudio/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Scan Waste",
+      "url": "/?screen=scan",
+      "description": "Open AI waste scanner"
+    },
+    {
+      "name": "Schedule Pickup",
+      "url": "/?screen=facilities",
+      "description": "Schedule a kabadiwala pickup"
+    }
+  ]
+}

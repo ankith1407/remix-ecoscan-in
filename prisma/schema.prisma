@@ -43,11 +43,11 @@ model Address {
   label                String            @default("Home")
   fullAddress          String
   landmark             String?
-  pincode              String            @default("560038")
-  city                 String            @default("Bengaluru")
-  state                String            @default("Karnataka")
-  latitude             Float             @default(12.9716)
-  longitude            Float             @default(77.6412)
+  pincode              String            @default("500033")
+  city                 String            @default("Hyderabad")
+  state                String            @default("Telangana")
+  latitude             Float             @default(17.3850)
+  longitude            Float             @default(78.4867)
   isDefault            Boolean           @default(true)
   createdAt            DateTime          @default(now())
 
@@ -62,8 +62,8 @@ model Collector {
   phone                String
   verificationStatus   String            @default("PENDING") // PENDING, VERIFIED, REJECTED, SUSPENDED
   serviceArea          String
-  latitude             Float             @default(12.9716)
-  longitude            Float             @default(77.6412)
+  latitude             Float             @default(17.3850)
+  longitude            Float             @default(78.4867)
   available            Boolean           @default(true)
   rating               Float             @default(5.0)
   totalPickups         Int               @default(0)

@@ -483,7 +483,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           <button
             onClick={() => {
               navigator.clipboard?.writeText?.(
-                'Join me on EcoScan IN! Doing daily waste segregation in Bengaluru ♻️'
+                'Join me on EcoScan IN! Doing daily waste segregation in Hyderabad ♻️'
               );
               alert('Daily Quest invite link copied to clipboard!');
             }}

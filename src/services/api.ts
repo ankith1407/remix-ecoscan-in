@@ -16,15 +16,44 @@ import {
   LiveCollectorLocation,
 } from '../types';
 
+let _isRefreshing = false;
+let _refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (_isRefreshing && _refreshPromise) return _refreshPromise;
+  _isRefreshing = true;
+  _refreshPromise = globalThis.fetch('/api/auth/refresh', {
+    method: 'POST',
+    credentials: 'same-origin',
+  }).then(r => r.ok).catch(() => false).finally(() => {
+    _isRefreshing = false;
+    _refreshPromise = null;
+  });
+  return _refreshPromise;
+}
+
 async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = localStorage.getItem('ecoscan_jwt_token');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await globalThis.fetch(input, { ...init, headers, credentials: 'same-origin' });
+  let response = await globalThis.fetch(input, { ...init, headers, credentials: 'same-origin' });
+
+  // On 401, attempt a silent token refresh and retry once.
   if (response.status === 401) {
-    localStorage.removeItem('ecoscan_jwt_token');
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      // Retry the original request — the server will now see the new access token cookie.
+      const retryHeaders = new Headers(init.headers);
+      response = await globalThis.fetch(input, { ...init, headers: retryHeaders, credentials: 'same-origin' });
+    }
+    if (response.status === 401) {
+      // Both access token and refresh token are invalid — clear any stale data.
+      localStorage.removeItem('ecoscan_jwt_token');
+      localStorage.removeItem('ecoscan_active_profile');
+    }
   }
+
   return response;
 }
 
@@ -69,11 +98,32 @@ export interface WasteScanResponse {
   };
 }
 
+// -------------------------------------------------------------------
+// Typed error codes — frontend must read `code`, never parse message text.
+// -------------------------------------------------------------------
+export type ScanErrorCode =
+  | 'AI_TIMEOUT'       // Gemini/backend timed out
+  | 'AI_UNAVAILABLE'   // Gemini service down / quota / key invalid
+  | 'AI_INVALID_RESPONSE' // Malformed JSON from Gemini
+  | 'AI_LOW_CONFIDENCE'   // is_unidentifiable or confidence < 0.45
+  | 'IMAGE_INVALID'    // Bad/corrupt image data
+  | 'NETWORK_ERROR'    // Fetch-level network failure
+  | 'UNKNOWN_ERROR';   // Unexpected server error
+
+/** Discriminated union returned by scanWaste(). Never throws. */
+export type AnalysisResult =
+  | { success: true; data: WasteScanResponse }
+  | { success: false; code: ScanErrorCode; message: string; data?: Partial<WasteScanResponse> };
+
 export const api = {
   // Users & Auth
   async getCurrentUser(): Promise<AuthUser> {
     const res = await fetch('/api/auth/me');
-    if (!res.ok) throw new Error('Session expired');
+    if (!res.ok) {
+      localStorage.removeItem('ecoscan_jwt_token');
+      localStorage.removeItem('ecoscan_active_profile');
+      throw new Error('Your session has expired. Please sign in again.');
+    }
     const user = await res.json();
     return { ...user, phoneNumber: user.phoneNumber || user.phone, createdAt: user.createdAt || user.created_at };
   },
@@ -95,10 +145,12 @@ export const api = {
     } catch {
       throw new Error('Unable to connect to EcoScan. Please start the server and try again.');
     }
-    if (!res.ok) throw new Error('Login failed');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Login failed');
+    }
     const data = await res.json();
     if (!data.user) throw new Error('Login response did not include a user session');
-    // Confirm the HttpOnly cookie was accepted before the UI enters the dashboard.
     return this.getCurrentUser();
   },
 
@@ -115,7 +167,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Registration failed');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Registration failed');
+    }
     const resData = await res.json();
     if (!resData.user) throw new Error('Registration response did not include a user session');
     return this.getCurrentUser();
@@ -196,15 +251,23 @@ export const api = {
     return res.json();
   },
 
+  // -------------------------------------------------------------------
   // Real AI Waste Scanner (Gemini Vision)
+  // Returns a typed AnalysisResult — NEVER throws, NEVER implies a
+  // fallback classification. All failures are explicit typed error codes.
+  // -------------------------------------------------------------------
   async scanWaste(
     imageBase64: string,
     mimeType: string = 'image/jpeg',
     userId?: string,
     language: 'EN' | 'HI' | 'TE' = 'EN'
-  ): Promise<WasteScanResponse> {
+  ): Promise<AnalysisResult> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    // 25 s — coordinated with backend (20 s Gemini timeout + 5 s buffer).
+    // The frontend AbortController fires AFTER the backend has already had
+    // a chance to respond, ensuring we always get a structured server error
+    // instead of a raw AbortError mid-flight.
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     try {
       const res = await fetch('/api/waste/scan', {
@@ -216,16 +279,42 @@ export const api = {
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Analysis failed' }));
-        throw new Error(err.error || 'Failed to analyze waste');
+        // Server always returns { code: ScanErrorCode, error: string } on failure.
+        const errBody = await res.json().catch(() => ({ code: 'UNKNOWN_ERROR', error: 'Analysis failed' }));
+        const code: ScanErrorCode = errBody.code || (
+          res.status === 408 ? 'AI_TIMEOUT' :
+          res.status === 503 ? 'AI_UNAVAILABLE' :
+          res.status === 502 ? 'AI_INVALID_RESPONSE' :
+          res.status === 422 ? 'AI_LOW_CONFIDENCE' :
+          res.status === 400 ? 'IMAGE_INVALID' :
+          'UNKNOWN_ERROR'
+        );
+        return {
+          success: false,
+          code,
+          message: errBody.error || 'AI analysis failed. Please retry.',
+          data: errBody.analysis ? { analysis: errBody.analysis, scan: errBody.scan } : undefined
+        } as AnalysisResult;
       }
-      return res.json();
+
+      const data: WasteScanResponse = await res.json();
+      return { success: true, data };
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error('Waste analysis timed out. Using fast offline identification fallback.');
+        // Frontend-side abort — NEVER classify or fall back.
+        return {
+          success: false,
+          code: 'AI_TIMEOUT' as const,
+          message: 'AI analysis timed out. Please retry with the same image.',
+        };
       }
-      throw err;
+      // Unexpected network error
+      return {
+        success: false,
+        code: 'NETWORK_ERROR' as const,
+        message: (err as Error)?.message || 'Network error. Please check your connection.',
+      };
     }
   },
 
@@ -242,6 +331,17 @@ export const api = {
     return res.json();
   },
 
+  // Returns the collector record linked to the currently authenticated user.
+  // Uses the server-side JWT session — never trusts a client-supplied ID.
+  async getMyCollector(): Promise<DbCollectorItem> {
+    const res = await fetch('/api/collectors/me');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to resolve your collector profile');
+    }
+    return res.json();
+  },
+
   async verifyCollector(
     id: string,
     status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED'
@@ -252,6 +352,31 @@ export const api = {
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error('Failed to update collector verification status');
+    return res.json();
+  },
+
+  async addCollector(data: {
+    name: string;
+    phone: string;
+    service_area?: string;
+    verification_status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED';
+    user_id?: string;
+  }): Promise<DbCollectorItem> {
+    const res = await fetch('/api/collectors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add collector');
+    }
+    return res.json();
+  },
+
+  async seedDefaultCollectors(): Promise<{ message: string; collectors: DbCollectorItem[] }> {
+    const res = await fetch('/api/admin/seed-collectors', { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to seed default collectors');
     return res.json();
   },
 
@@ -304,13 +429,12 @@ export const api = {
 
   async updatePickupStatus(
     id: string,
-    status: string,
-    collectorId?: string
+    status: string
   ): Promise<DbPickupItem> {
     const res = await fetch(`/api/pickups/${id}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, collector_id: collectorId }),
+      body: JSON.stringify({ status }),
     });
     const resData = await res.json().catch(() => ({ error: 'Failed to update pickup status' }));
     if (!res.ok) throw new Error(resData.error || resData.message || 'Failed to update pickup status');
