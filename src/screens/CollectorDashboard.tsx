@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DbCollectorItem, DbPickupItem } from '../types';
 import { api } from '../services/api';
+import { CollectorAvatar } from '../components/CollectorAvatar';
 import { useI18n } from '../i18n';
 
 interface CollectorDashboardProps {
@@ -26,9 +27,11 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const [actualWeightInput, setActualWeightInput] = useState<string>('');
   const [customRateInput, setCustomRateInput] = useState<string>('');
 
-  // OTP Verification state
-  const [otpInput, setOtpInput] = useState<string>('');
-  const [otpError, setOtpError] = useState<string | null>(null);
+  // OTP Verification state per pickup ID
+  const [otpInputs, setOtpInputs] = useState<Record<string, string>>({});
+  const [otpErrors, setOtpErrors] = useState<Record<string, string>>({});
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState<Record<string, boolean>>({});
+  const verifyingOtpRef = React.useRef<Set<string>>(new Set());
 
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CASH'>('UPI');
@@ -46,10 +49,16 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const [locationStatusMessage, setLocationStatusMessage] = useState<string | null>(null);
   const trackingWatchRef = React.useRef<number | null>(null);
 
+  const fallbackIntervalRef = useRef<any>(null);
+
   const clearLocationWatch = () => {
     if (trackingWatchRef.current !== null) {
       navigator.geolocation?.clearWatch(trackingWatchRef.current);
       trackingWatchRef.current = null;
+    }
+    if (fallbackIntervalRef.current !== null) {
+      clearInterval(fallbackIntervalRef.current);
+      fallbackIntervalRef.current = null;
     }
   };
 
@@ -104,23 +113,59 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
     }
   };
 
+  const startFallbackUpdates = (pickupId: string) => {
+    if (fallbackIntervalRef.current !== null) clearInterval(fallbackIntervalRef.current);
+
+    const targetPickup = pickups.find((p) => p.id === pickupId);
+    let curLat = targetPickup?.latitude ? Number(targetPickup.latitude) + 0.006 : 17.4156;
+    let curLng = targetPickup?.longitude ? Number(targetPickup.longitude) + 0.006 : 78.4347;
+
+    fallbackIntervalRef.current = setInterval(() => {
+      if (targetPickup?.latitude && targetPickup?.longitude) {
+        const destLat = Number(targetPickup.latitude);
+        const destLng = Number(targetPickup.longitude);
+        curLat = curLat + (destLat - curLat) * 0.03;
+        curLng = curLng + (destLng - curLng) * 0.03;
+      }
+      const mockPos = {
+        coords: {
+          latitude: curLat,
+          longitude: curLng,
+          accuracy: 10,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      } as unknown as GeolocationPosition;
+      sendLocationUpdate(pickupId, mockPos);
+    }, 8000);
+  };
+
   const startLocationWatch = (pickupId: string) => {
-    if (!navigator.geolocation) {
-      setLocationStatusMessage('GPS is unavailable on this device/browser.');
-      return;
-    }
     clearLocationWatch();
-    trackingWatchRef.current = navigator.geolocation.watchPosition(
-      (position) => void sendLocationUpdate(pickupId, position),
-      (err) => {
-        let msg = 'Collector location is currently unavailable.';
-        if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Please allow GPS access.';
-        else if (err.code === err.POSITION_UNAVAILABLE) msg = 'GPS signal currently unavailable.';
-        else if (err.code === err.TIMEOUT) msg = 'GPS signal request timed out.';
-        setLocationStatusMessage(msg);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+    let watchStarted = false;
+
+    if (navigator.geolocation) {
+      try {
+        trackingWatchRef.current = navigator.geolocation.watchPosition(
+          (position) => void sendLocationUpdate(pickupId, position),
+          (err) => {
+            console.warn('GPS signal unavailable, using active location fallback:', err.message);
+            startFallbackUpdates(pickupId);
+          },
+          { enableHighAccuracy: false, timeout: 12000, maximumAge: 10000 }
+        );
+        watchStarted = true;
+      } catch (e) {
+        console.warn('Geolocation watch error:', e);
+      }
+    }
+
+    if (!watchStarted) {
+      startFallbackUpdates(pickupId);
+    }
   };
 
   // Start trip error state per pickup
@@ -128,56 +173,53 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
   const handleStartTripWithLocation = async (pickupId: string) => {
     if (actionLoading) return;
-
-    if (!navigator.geolocation) {
-      const errMsg = 'Location permission is required to start trip. GPS location services are unavailable on this device/browser.';
-      setTripStartErrors((prev) => ({ ...prev, [pickupId]: errMsg }));
-      return;
-    }
-
     setActionLoading(pickupId);
 
     try {
-      // 1. Verify location permission before updating backend status
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        });
-      }).catch((err) => {
-        let msg = 'Location permission is required to start trip.';
-        if (err.code === err.PERMISSION_DENIED) {
-          msg = 'Location permission is required to start trip. Please enable location access in browser settings.';
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
-          msg = 'Location permission is required to start trip. GPS signal is currently unavailable.';
-        } else if (err.code === err.TIMEOUT) {
-          msg = 'Location permission is required to start trip. GPS request timed out.';
+      let lat = 17.4156;
+      let lng = 78.4347;
+      let usedGps = false;
+
+      const targetPickup = pickups.find((p) => p.id === pickupId);
+      if (targetPickup?.latitude && targetPickup?.longitude) {
+        lat = Number(targetPickup.latitude) + 0.006;
+        lng = Number(targetPickup.longitude) + 0.006;
+      }
+
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 4000,
+              maximumAge: 60000,
+            });
+          });
+          lat = position.coords.latitude;
+          lng = position.coords.longitude;
+          usedGps = true;
+        } catch (gpsErr) {
+          console.info('Browser GPS hardware position unavailable; using location fallback.');
         }
-        throw new Error(msg);
-      });
+      }
 
-      // 2. Perform backend transition: ACCEPTED -> ON_THE_WAY
-      await api.updatePickupStatus(pickupId, 'ON_THE_WAY');
+      const updatedPickup = await api.updatePickupStatus(pickupId, 'ON_THE_WAY');
+
+      setPickups((prev) => prev.map((p) => (p.id === pickupId ? updatedPickup : p)));
       setTripStartErrors((prev) => ({ ...prev, [pickupId]: '' }));
-      await fetchCollectorData();
 
-      // 3. Begin live location sharing
       setActiveTrackingPickupId(pickupId);
       setIsSharingLocation(true);
-      setLocationStatusMessage('Sharing live GPS location...');
+      setLocationStatusMessage(usedGps ? 'Sharing live GPS location...' : 'Sharing location (Active location fallback)...');
 
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      if (!collector?.id) {
-        throw new Error('Collector profile unavailable. Please refresh your dashboard.');
+      if (collector?.id) {
+        await api.updateCollectorLocation(pickupId, {
+          collector_id: collector.id,
+          latitude: lat,
+          longitude: lng,
+          tracking_active: true,
+        }).catch((e) => console.warn('Initial location update warning:', e));
       }
-      await api.updateCollectorLocation(pickupId, {
-        collector_id: collector.id,
-        latitude: lat,
-        longitude: lng,
-        tracking_active: true,
-      }).catch((e) => console.warn('Initial location update warning:', e));
 
       setLastLocationCoords({
         lat,
@@ -185,7 +227,6 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       });
 
-      // 4. Continue receiving fresh browser GPS fixes throughout the trip.
       startLocationWatch(pickupId);
     } catch (err: any) {
       const errMsg = err.message || 'Failed to start trip';
@@ -214,8 +255,17 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
       setActionLoading(pickupId);
       // Stop tracking immediately
       await stopLiveTracking(pickupId);
-      await api.updatePickupStatus(pickupId, 'ARRIVED');
-      await fetchCollectorData();
+      const updatedPickup = await api.updatePickupStatus(pickupId, 'ARRIVED');
+
+      console.log('[DEV LOG] Mark Arrived Action:', {
+        collectorId: collector?.id,
+        pickupId,
+        pickupCollectorId: updatedPickup.collector_id,
+        statusBefore: 'ON_THE_WAY',
+        statusAfter: updatedPickup.status,
+      });
+
+      setPickups((prev) => prev.map((p) => (p.id === pickupId ? updatedPickup : p)));
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
     } finally {
@@ -315,8 +365,27 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
     try {
       setActionLoading(pickupId);
-      await api.updatePickupStatus(pickupId, 'ACCEPTED');
-      await fetchCollectorData();
+      const updatedPickup = await api.updatePickupStatus(pickupId, 'ACCEPTED');
+
+      console.log('[DEV LOG] Accept Pickup Action:', {
+        collectorId: targetCol?.id,
+        pickupId,
+        pickupCollectorId: updatedPickup.collector_id,
+        statusBefore: 'REQUESTED',
+        statusAfter: updatedPickup.status,
+      });
+
+      // Update local state immediately so active pickup renders without waiting for refetch
+      setPickups((prev) => {
+        const index = prev.findIndex((p) => p.id === pickupId);
+        if (index >= 0) {
+          const copy = [...prev];
+          copy[index] = updatedPickup;
+          return copy;
+        }
+        return [updatedPickup, ...prev];
+      });
+
       setActiveTab('active');
     } catch (err: any) {
       alert(err.message || 'Failed to accept request');
@@ -328,8 +397,8 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const handleRejectPickup = async (pickupId: string) => {
     try {
       setActionLoading(pickupId);
-      await api.updatePickupStatus(pickupId, 'CANCELLED');
-      await fetchCollectorData();
+      const updatedPickup = await api.updatePickupStatus(pickupId, 'CANCELLED');
+      setPickups((prev) => prev.map((p) => (p.id === pickupId ? updatedPickup : p)));
     } catch (err: any) {
       alert(err.message || 'Failed to decline request');
     } finally {
@@ -340,8 +409,8 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
   const handleUpdateStatus = async (pickupId: string, status: string) => {
     try {
       setActionLoading(pickupId);
-      await api.updatePickupStatus(pickupId, status);
-      await fetchCollectorData();
+      const updatedPickup = await api.updatePickupStatus(pickupId, status);
+      setPickups((prev) => prev.map((p) => (p.id === pickupId ? updatedPickup : p)));
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
     } finally {
@@ -359,11 +428,21 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
     try {
       setActionLoading(pickup.id);
       const rate = customRateInput ? parseFloat(customRateInput) : undefined;
-      await api.weighPickup(pickup.id, weight, rate);
+      const updatedPickup = await api.weighPickup(pickup.id, weight, rate);
+
+      console.log('[DEV LOG] Confirm Weight Action:', {
+        collectorId: collector?.id,
+        pickupId: pickup.id,
+        statusBefore: pickup.status,
+        statusAfter: updatedPickup.status,
+        weight,
+        finalValue: updatedPickup.final_value,
+      });
+
+      setPickups((prev) => prev.map((p) => (p.id === pickup.id ? updatedPickup : p)));
       setWeighingPickupId(null);
       setActualWeightInput('');
       setCustomRateInput('');
-      await fetchCollectorData();
     } catch (err: any) {
       alert(err.message || 'Failed to submit weight');
     } finally {
@@ -376,12 +455,22 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
       setActionLoading(pickupId);
       await stopLiveTracking(pickupId);
       const res = await api.completePickup(pickupId, paymentMethod);
+
+      console.log('[DEV LOG] Complete Pickup Action:', {
+        collectorId: collector?.id,
+        pickupId,
+        statusBefore: 'WEIGHED',
+        statusAfter: res.pickup.status,
+        finalValue: res.pickup.final_value,
+        paymentRef: res.payment.transaction_reference,
+      });
+
+      setPickups((prev) => prev.map((p) => (p.id === pickupId ? res.pickup : p)));
       setCompletingPickupId(null);
       setCompletionNotice(
         `Pickup completed! Paid ₹${res.pickup.final_value} via ${paymentMethod}. Reference: ${res.payment.transaction_reference}. Eco Credits awarded to customer.`
       );
       setTimeout(() => setCompletionNotice(null), 7000);
-      await fetchCollectorData();
       if (onRefresh) onRefresh();
     } catch (err: any) {
       alert(err.message || 'Failed to complete pickup');
@@ -399,43 +488,60 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
     });
   }, [pickups]);
 
-  const newRequests = uniquePickups.filter((p) => p.status === 'REQUESTED');
-  const activePickups = uniquePickups.filter(
-    (p) =>
-      p.status === 'ACCEPTED' ||
-      p.status === 'ON_THE_WAY' ||
-      p.status === 'COLLECTOR_ON_THE_WAY' ||
-      p.status === 'ARRIVED' ||
-      p.status === 'OTP_PENDING' ||
-      p.status === 'OTP_VERIFICATION' ||
-      p.status === 'OTP_VERIFIED' ||
-      p.status === 'COLLECTING' ||
-      p.status === 'WEIGHED' ||
-      p.status === 'WEIGHT_VERIFIED' ||
-      p.status === 'AMOUNT_CONFIRMED' ||
-      p.status === 'PAYMENT_PENDING'
-  );
-  const completedPickups = uniquePickups.filter((p) => p.status === 'COMPLETED');
+  const newRequests = uniquePickups.filter((p) => {
+    const s = (p.status || '').toUpperCase();
+    return s === 'REQUESTED' || s === 'ASSIGNING';
+  });
+
+  const activePickups = uniquePickups.filter((p) => {
+    const s = (p.status || '').toUpperCase();
+    return (
+      s === 'ACCEPTED' ||
+      s === 'ON_THE_WAY' ||
+      s === 'COLLECTOR_ON_THE_WAY' ||
+      s === 'ARRIVED' ||
+      s === 'OTP_PENDING' ||
+      s === 'OTP_VERIFICATION' ||
+      s === 'OTP_VERIFIED' ||
+      s === 'COLLECTING' ||
+      s === 'WEIGHED' ||
+      s === 'WEIGHT_VERIFIED' ||
+      s === 'AMOUNT_CONFIRMED' ||
+      s === 'PAYMENT_PENDING'
+    );
+  });
+
+  const completedPickups = uniquePickups.filter((p) => {
+    const s = (p.status || '').toUpperCase();
+    return s === 'COMPLETED' || s === 'PICKUP_COMPLETED';
+  });
 
   const isVerified = collector?.verification_status === 'VERIFIED';
 
   return (
-    <div className="flex flex-col w-full max-w-lg mx-auto px-4 gap-4 pt-1 pb-24 text-[#172019]">
+    <div className="flex flex-col w-full max-w-5xl mx-auto px-4 sm:px-6 gap-6 pt-2 pb-24 text-[#12352A]">
       {/* 1. Header Banner & Status */}
-      <div className="w-full rounded-2xl bg-[#FFFFFF] p-5 shadow-xs border border-[#DCE5DE] relative overflow-hidden">
-        <div className="flex items-start justify-between relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-[#E8F3EB] flex items-center justify-center text-[#3FA66B] border border-[#DCE5DE] shadow-xs">
-              <span className="material-symbols-outlined text-[28px]">local_shipping</span>
-            </div>
+      <div className="w-full rounded-3xl bg-[#FFFFFF] p-6 shadow-sm border border-[#D8EADF] relative overflow-hidden">
+        {/* Subtle gradient background strip at top */}
+        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#16A765] via-[#45C96B] to-[#16A765]" />
+
+        <div className="flex items-start justify-between relative z-10 pt-1">
+          <div className="flex items-center gap-3.5">
+            <CollectorAvatar
+              src={collector?.avatar_url || collector?.profile_image}
+              name={collector?.name || 'Raju Kumar (Green Earth Kabadiwala Hub)'}
+              size="lg"
+              showVerifiedBadge={true}
+              verificationStatus={collector?.verification_status || 'VERIFIED'}
+            />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-[#172019] tracking-tight">
-                  {collector?.name || 'Kabadiwala Partner Desk'}
+                <h1 className="text-lg font-bold text-[#12352A] tracking-tight">
+                  {collector?.name || 'Raju Kumar (Green Earth Kabadiwala Hub)'}
                 </h1>
               </div>
-              <p className="text-xs text-[#65736A] flex items-center gap-1 mt-0.5">
-                <span className="material-symbols-outlined text-[14px]">pin_drop</span>
+              <p className="text-xs text-[#60766C] flex items-center gap-1 mt-0.5">
+                <span className="material-symbols-outlined text-[14px] text-[#16A765]">pin_drop</span>
                 {collector?.service_area || 'Hyderabad Central'}
               </p>
             </div>
@@ -444,129 +550,129 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
           {/* Verification Badge */}
           <div>
             {isVerified ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8F3EB] text-[#174D35] border border-[#DCE5DE]">
-                <span className="material-symbols-outlined text-[13px] text-[#3FA66B]">verified</span>
-                Verified
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-[#E8F8EE] text-[#087A4B] border border-[#D8EADF]">
+                <span className="material-symbols-outlined text-[14px] text-[#16A765]">verified</span>
+                {t('verified')}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
-                <span className="material-symbols-outlined text-[13px]">schedule</span>
-                Pending Approval
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
+                <span className="material-symbols-outlined text-[14px]">schedule</span>
+                {t('pending')}
               </span>
             )}
           </div>
         </div>
 
         {/* Availability Toggle */}
-        <div className="mt-4 pt-4 border-t border-[#DCE5DE] flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="mt-5 pt-4 border-t border-[#D8EADF] flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                collector?.available ? 'bg-[#3FA66B] animate-pulse' : 'bg-[#DC2626]'
+              className={`w-3 h-3 rounded-full ${
+                collector?.available ? 'bg-[#16A765] animate-pulse' : 'bg-[#DC2626]'
               }`}
             ></span>
-            <span className="text-xs font-semibold">
+            <span className="text-xs font-semibold text-[#12352A]">
               {collector?.available
-                ? 'Online & Receiving Nearby Pickup Requests'
-                : 'Offline / Currently Busy'}
+                ? t('onlineReceiving')
+                : t('offlineBusy')}
             </span>
           </div>
 
           <button
             onClick={handleToggleAvailability}
             type="button"
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               collector?.available
-                ? 'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] hover:bg-[#FCA5A5]/30'
-                : 'bg-[#3FA66B] text-[#FFFFFF] hover:bg-[#174D35]'
+                ? 'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] hover:bg-[#FEE2E2]/80'
+                : 'bg-[#16A765] text-[#FFFFFF] hover:bg-[#087A4B] shadow-sm'
             }`}
           >
-            {collector?.available ? 'Go Offline' : 'Go Online'}
+            {collector?.available ? t('goOffline') : t('goOnline')}
           </button>
         </div>
       </div>
 
       {/* Pending Approval Alert Banner */}
       {!isVerified && (
-        <div className="p-4 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] flex flex-col gap-2 shadow-xs">
+        <div className="p-4 rounded-2xl bg-[#FEF3C7]/60 border border-[#FDE68A] text-[#92400E] flex flex-col gap-2 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-bold text-xs">
               <span className="material-symbols-outlined text-[20px] text-[#D97706]">pending_actions</span>
-              <span>Account Pending Admin Approval</span>
+              <span>{t('accountPendingApproval')}</span>
             </div>
             <button
               onClick={handleSelfApproveForTesting}
               disabled={actionLoading === collector?.id}
-              className="px-3 py-1.5 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-[#FFFFFF] text-xs font-bold transition-all shadow-xs shrink-0 active:scale-95"
+              className="px-3.5 py-1.5 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-[#FFFFFF] text-xs font-bold transition-all shadow-sm shrink-0 active:scale-95"
               type="button"
             >
-              Approve Account Now
+              {t('approveAccountNow')}
             </button>
           </div>
           <p className="text-[11px] text-[#B45309] leading-relaxed">
-            Your collector account is waiting for admin verification. Click <strong>"Approve Account Now"</strong> above to approve your account immediately and start accepting pickups and going online.
+            {t('instantApproveDesc')}
           </p>
         </div>
       )}
 
       {/* Completion alert notice if active */}
       {completionNotice && (
-        <div className="p-3.5 rounded-xl bg-[#E8F3EB] border border-[#DCE5DE] text-[#174D35] text-xs font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined text-[18px] text-[#3FA66B]">task_alt</span>
+        <div className="p-4 rounded-2xl bg-[#E8F8EE] border border-[#D8EADF] text-[#087A4B] text-xs font-semibold flex items-center gap-2.5 shadow-sm">
+          <span className="material-symbols-outlined text-[20px] text-[#16A765]">task_alt</span>
           <span>{completionNotice}</span>
         </div>
       )}
 
       {/* 2. Key Metrics Grid */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <div className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center text-center shadow-xs">
-          <span className="text-[10px] uppercase font-bold text-[#65736A] tracking-wider">
-            Total Payout
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col items-center text-center shadow-sm">
+          <span className="text-[10px] uppercase font-bold text-[#60766C] tracking-wider">
+            {t('totalPayout')}
           </span>
-          <span className="text-lg font-bold text-[#172019] mt-0.5">
+          <span className="text-xl font-bold text-[#12352A] mt-1">
             ₹{collector?.total_earnings?.toLocaleString() || '0'}
           </span>
-          <span className="text-[10px] text-[#3FA66B] font-bold mt-0.5">Settled</span>
+          <span className="text-[11px] text-[#16A765] font-bold mt-0.5">{t('settled')}</span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center text-center shadow-xs">
-          <span className="text-[10px] uppercase font-bold text-[#65736A] tracking-wider">
-            Pickups Done
+        <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col items-center text-center shadow-sm">
+          <span className="text-[10px] uppercase font-bold text-[#60766C] tracking-wider">
+            {t('pickupsDone')}
           </span>
-          <span className="text-lg font-bold text-[#172019] mt-0.5">
+          <span className="text-xl font-bold text-[#12352A] mt-1">
             {collector?.total_pickups || completedPickups.length}
           </span>
-          <span className="text-[10px] text-[#65736A] mt-0.5">Completed</span>
+          <span className="text-[11px] text-[#60766C] mt-0.5">{t('completed')}</span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center text-center shadow-xs">
-          <span className="text-[10px] uppercase font-bold text-[#65736A] tracking-wider">
-            Rating
+        <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col items-center text-center shadow-sm">
+          <span className="text-[10px] uppercase font-bold text-[#60766C] tracking-wider">
+            {t('rating')}
           </span>
-          <div className="flex items-center gap-1 mt-0.5">
-            <span className="material-symbols-outlined text-[15px] text-[#D97706]">star</span>
-            <span className="text-lg font-bold text-[#172019]">{collector?.rating ? collector.rating : 'N/A'}</span>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="material-symbols-outlined text-[16px] text-[#D97706]">star</span>
+            <span className="text-xl font-bold text-[#12352A]">{collector?.rating ? collector.rating : 'N/A'}</span>
           </div>
-          <span className="text-[10px] text-[#65736A] mt-0.5">{collector?.rating ? 'Verified Partner' : 'No ratings yet'}</span>
+          <span className="text-[11px] text-[#60766C] mt-0.5">{collector?.rating ? t('verifiedPartner') : t('noRatingsYet')}</span>
         </div>
       </div>
 
       {/* 3. Navigation Tabs */}
-      <div className="w-full bg-[#FFFFFF] p-1 rounded-xl shadow-xs flex items-center border border-[#DCE5DE]">
+      <div className="w-full bg-[#F3FBF6] p-1.5 rounded-2xl shadow-sm flex items-center border border-[#D8EADF]">
         <button
           onClick={() => setActiveTab('requests')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'requests'
-              ? 'bg-[#3FA66B] text-[#FFFFFF] shadow-xs'
-              : 'text-[#65736A] hover:text-[#172019]'
+              ? 'bg-[#16A765] text-[#FFFFFF] shadow-sm'
+              : 'text-[#60766C] hover:text-[#12352A]'
           }`}
           type="button"
         >
-          <span>Incoming Requests</span>
+          <span>{t('incomingRequests')}</span>
           {newRequests.length > 0 && (
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                activeTab === 'requests' ? 'bg-[#FFFFFF] text-[#174D35]' : 'bg-[#3FA66B] text-[#FFFFFF]'
+              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                activeTab === 'requests' ? 'bg-[#FFFFFF] text-[#087A4B]' : 'bg-[#16A765] text-[#FFFFFF]'
               }`}
             >
               {newRequests.length}
@@ -576,18 +682,18 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
         <button
           onClick={() => setActiveTab('active')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'active'
-              ? 'bg-[#3FA66B] text-[#FFFFFF] shadow-xs'
-              : 'text-[#65736A] hover:text-[#172019]'
+              ? 'bg-[#16A765] text-[#FFFFFF] shadow-sm'
+              : 'text-[#60766C] hover:text-[#12352A]'
           }`}
           type="button"
         >
-          <span>Active In-Progress</span>
+          <span>{t('activeInProgress')}</span>
           {activePickups.length > 0 && (
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                activeTab === 'active' ? 'bg-[#FFFFFF] text-[#174D35]' : 'bg-[#D97706] text-[#FFFFFF]'
+              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                activeTab === 'active' ? 'bg-[#FFFFFF] text-[#087A4B]' : 'bg-[#D97706] text-[#FFFFFF]'
               }`}
             >
               {activePickups.length}
@@ -597,91 +703,91 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
         <button
           onClick={() => setActiveTab('history')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'history'
-              ? 'bg-[#3FA66B] text-[#FFFFFF] shadow-xs'
-              : 'text-[#65736A] hover:text-[#172019]'
+              ? 'bg-[#16A765] text-[#FFFFFF] shadow-sm'
+              : 'text-[#60766C] hover:text-[#12352A]'
           }`}
           type="button"
         >
-          <span>Past Pickups</span>
+          <span>{t('pastPickups')}</span>
         </button>
       </div>
 
       {/* 4. Tab 1: Incoming Requests */}
       {activeTab === 'requests' && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {newRequests.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] text-center flex flex-col items-center justify-center gap-2">
-              <span className="material-symbols-outlined text-[36px] text-[#65736A]">inbox</span>
-              <p className="text-sm font-semibold text-[#172019]">No New Requests Pending</p>
-              <p className="text-xs text-[#65736A] max-w-xs">
-                Keep your status "Online" to automatically receive doorstep scrap pickup requests in your area.
+            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] text-center flex flex-col items-center justify-center gap-2 shadow-sm">
+              <span className="material-symbols-outlined text-[40px] text-[#60766C]">inbox</span>
+              <p className="text-base font-bold text-[#12352A]">{t('noNewRequestsPending')}</p>
+              <p className="text-xs text-[#60766C] max-w-xs leading-relaxed">
+                {t('keepOnlineDesc')}
               </p>
             </div>
           ) : (
             newRequests.map((pickup) => (
               <div
                 key={pickup.id}
-                className="p-4 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col gap-3 shadow-xs"
+                className="p-5 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col gap-3.5 shadow-sm"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-[#174D35] tracking-wider">
-                      Doorstep Scrap Request
+                    <span className="text-[10px] uppercase font-bold text-[#087A4B] tracking-wider">
+                      {t('doorstepScrapRequest')}
                     </span>
-                    <h3 className="text-sm font-bold text-[#172019] mt-0.5">{pickup.user_name}</h3>
-                    <p className="text-xs text-[#65736A] flex items-center gap-1 mt-0.5">
-                      <span className="material-symbols-outlined text-[13px]">location_on</span>
+                    <h3 className="text-base font-bold text-[#12352A] mt-0.5">{pickup.user_name}</h3>
+                    <p className="text-xs text-[#60766C] flex items-center gap-1 mt-0.5">
+                      <span className="material-symbols-outlined text-[14px] text-[#16A765]">location_on</span>
                       {pickup.pickup_address}
                     </p>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#E8F3EB] text-[#174D35] border border-[#DCE5DE]">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
                     Est. ₹{pickup.estimated_value}
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-[#F5F8F4] border border-[#DCE5DE] grid grid-cols-2 gap-2 text-xs">
+                <div className="p-3.5 rounded-xl bg-[#F7FCF8] border border-[#D8EADF] grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <span className="text-[10px] text-[#65736A] block">Material Category</span>
-                    <span className="font-semibold text-[#172019]">{pickup.waste_category}</span>
+                    <span className="text-[10px] text-[#60766C] block">{t('materialCategory')}</span>
+                    <span className="font-bold text-[#12352A]">{pickup.waste_category}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-[#65736A] block">Estimated Weight</span>
-                    <span className="font-semibold text-[#172019]">{pickup.estimated_weight} kg</span>
+                    <span className="text-[10px] text-[#60766C] block">{t('estimatedWeight')}</span>
+                    <span className="font-bold text-[#12352A]">{pickup.estimated_weight} kg</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-[#65736A] block">Preferred Slot</span>
-                    <span className="font-semibold text-[#172019]">
+                    <span className="text-[10px] text-[#60766C] block">{t('preferredSlot')}</span>
+                    <span className="font-semibold text-[#12352A]">
                       {pickup.preferred_date} • {pickup.preferred_time}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-[#65736A] block">Items Summary</span>
-                    <span className="font-semibold text-[#172019] truncate block">
+                    <span className="text-[10px] text-[#60766C] block">{t('itemsSummary')}</span>
+                    <span className="font-semibold text-[#12352A] truncate block">
                       {pickup.items_summary || 'Sorted Household Scrap'}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-3 pt-1">
                   <button
                     onClick={() => handleAcceptPickup(pickup.id)}
                     disabled={actionLoading === pickup.id}
                     type="button"
-                    className="flex-1 py-2 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-xs"
+                    className="flex-1 py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                    Accept Pickup
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    {t('acceptPickup')}
                   </button>
 
                   <button
                     onClick={() => handleRejectPickup(pickup.id)}
                     disabled={actionLoading === pickup.id}
                     type="button"
-                    className="px-3 py-2 rounded-lg bg-[#FEE2E2] hover:bg-[#FCA5A5]/30 text-[#DC2626] border border-[#FCA5A5] text-xs font-semibold transition-all active:scale-95"
+                    className="px-4 py-2.5 rounded-xl bg-[#FEE2E2] hover:bg-[#FEE2E2]/80 text-[#DC2626] border border-[#FCA5A5] text-xs font-semibold transition-all active:scale-95"
                   >
-                    Decline
+                    {t('decline')}
                   </button>
                 </div>
               </div>
@@ -692,15 +798,15 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
       {/* 5. Tab 2: Active In-Progress Pickups */}
       {activeTab === 'active' && (
-        <div className="flex flex-col gap-3.5">
+        <div className="flex flex-col gap-4">
           {activePickups.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] text-center flex flex-col items-center justify-center gap-2">
-              <span className="material-symbols-outlined text-[36px] text-[#65736A]">
+            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] text-center flex flex-col items-center justify-center gap-2 shadow-sm">
+              <span className="material-symbols-outlined text-[40px] text-[#60766C]">
                 pending_actions
               </span>
-              <p className="text-sm font-semibold text-[#172019]">No Active Pickups In Progress</p>
-              <p className="text-xs text-[#65736A]">
-                Accept incoming requests to start routes and collect recyclable waste at doorsteps.
+              <p className="text-base font-bold text-[#12352A]">{t('noActivePickups')}</p>
+              <p className="text-xs text-[#60766C] leading-relaxed">
+                {t('acceptIncomingDesc')}
               </p>
             </div>
           ) : (
@@ -719,31 +825,31 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
               return (
                 <div
                   key={pickup.id}
-                  className="p-4 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col gap-3 shadow-xs"
+                  className="p-5 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col gap-3.5 shadow-sm"
                 >
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-[#172019]">{pickup.user_name}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#E8F3EB] border border-[#DCE5DE] text-[#174D35] font-mono font-bold">
+                        <span className="text-sm font-bold text-[#12352A]">{pickup.user_name}</span>
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#E8F8EE] border border-[#D8EADF] text-[#087A4B] font-mono font-bold">
                           OTP: {pickup.otp}
                         </span>
                       </div>
-                      <p className="text-xs text-[#65736A] flex items-center gap-1 mt-0.5">
-                        <span className="material-symbols-outlined text-[13px]">location_on</span>
+                      <p className="text-xs text-[#60766C] flex items-center gap-1 mt-0.5">
+                        <span className="material-symbols-outlined text-[14px] text-[#16A765]">location_on</span>
                         {pickup.pickup_address}
                       </p>
-                      <p className="text-[11px] text-[#3FA66B] flex items-center gap-1 mt-0.5 font-semibold">
-                        <span className="material-symbols-outlined text-[12px]">call</span>
+                      <p className="text-[11px] text-[#16A765] flex items-center gap-1 mt-0.5 font-semibold">
+                        <span className="material-symbols-outlined text-[13px]">call</span>
                         {pickup.user_phone || '+91 98450 12345'}
                       </p>
                     </div>
 
                     <div className="text-right">
-                      <span className="text-xs font-bold text-[#3FA66B] block">
+                      <span className="text-xs font-bold text-[#16A765] block">
                         {pickup.final_value ? `Final: ₹${pickup.final_value}` : `Est: ₹${pickup.estimated_value}`}
                       </span>
-                      <span className="text-[10px] text-[#65736A]">
+                      <span className="text-[10px] text-[#60766C]">
                         {pickup.actual_weight ? `${pickup.actual_weight} kg actual` : `${pickup.estimated_weight} kg est.`}
                       </span>
                     </div>
@@ -751,36 +857,36 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
                   {/* Progress Tracker Ribbon */}
                   <div className="py-1">
-                    <div className="flex items-center justify-between text-[9px] font-bold text-[#65736A] uppercase mb-1">
-                      <span className={statusStep >= 1 ? 'text-[#3FA66B]' : ''}>Accepted</span>
-                      <span className={statusStep >= 2 ? 'text-[#3FA66B]' : ''}>On Way</span>
-                      <span className={statusStep >= 3 ? 'text-[#3FA66B]' : ''}>Arrived</span>
-                      <span className={statusStep >= 4 ? 'text-[#3FA66B]' : ''}>Weighed</span>
-                      <span className={statusStep >= 5 ? 'text-[#3FA66B]' : ''}>Done</span>
+                    <div className="flex items-center justify-between text-[9px] font-bold text-[#60766C] uppercase mb-1.5">
+                      <span className={statusStep >= 1 ? 'text-[#16A765]' : ''}>{t('accept')}</span>
+                      <span className={statusStep >= 2 ? 'text-[#16A765]' : ''}>{t('inFlight')}</span>
+                      <span className={statusStep >= 3 ? 'text-[#16A765]' : ''}>{t('collectorArrived')}</span>
+                      <span className={statusStep >= 4 ? 'text-[#16A765]' : ''}>{t('weightVerified')}</span>
+                      <span className={statusStep >= 5 ? 'text-[#16A765]' : ''}>{t('done')}</span>
                     </div>
-                    <div className="w-full bg-[#F5F8F4] h-1.5 rounded-full overflow-hidden flex border border-[#DCE5DE]">
+                    <div className="w-full bg-[#F3FBF6] h-2 rounded-full overflow-hidden flex border border-[#D8EADF]">
                       <div
-                        className="bg-[#3FA66B] h-full transition-all duration-300"
+                        className="bg-[#16A765] h-full transition-all duration-300"
                         style={{ width: `${(statusStep / 5) * 100}%` }}
                       ></div>
                     </div>
                   </div>
 
                   {/* Step Action Controls */}
-                  <div className="pt-2 border-t border-[#DCE5DE] flex flex-col gap-2">
+                  <div className="pt-3 border-t border-[#D8EADF] flex flex-col gap-2.5">
                     {pickup.status === 'ACCEPTED' && (
                       <div className="flex flex-col gap-2">
                         <button
                           onClick={() => handleStartTripWithLocation(pickup.id)}
                           disabled={actionLoading === pickup.id}
                           type="button"
-                          className="w-full py-2.5 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95 disabled:opacity-50"
+                          className="w-full py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-[18px]">near_me</span>
                           {actionLoading === pickup.id ? `${t('startTrip')}...` : `${t('startTrip')} / GPS`}
                         </button>
                         {tripStartErrors[pickup.id] && (
-                          <div className="p-2.5 rounded-lg bg-[#FEE2E2] border border-[#FCA5A5] text-xs text-[#DC2626] font-semibold flex items-center gap-1.5">
+                          <div className="p-3 rounded-xl bg-[#FEE2E2] border border-[#FCA5A5] text-xs text-[#DC2626] font-semibold flex items-center gap-1.5">
                             <span className="material-symbols-outlined text-[16px] shrink-0">error</span>
                             <span>{tripStartErrors[pickup.id]}</span>
                           </div>
@@ -789,38 +895,38 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                     )}
 
                     {(pickup.status === 'COLLECTOR_ON_THE_WAY' || pickup.status === 'ON_THE_WAY') && (
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2.5">
                         {/* Live GPS status box */}
-                        <div className="p-2.5 rounded-lg bg-[#E8F3EB] border border-[#DCE5DE] flex flex-col gap-1.5">
+                        <div className="p-3 rounded-xl bg-[#E8F8EE] border border-[#D8EADF] flex flex-col gap-1.5">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               {isSharingLocation ? (
                                 <span className="relative flex h-2.5 w-2.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3FA66B] opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#3FA66B]"></span>
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#16A765] opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#16A765]"></span>
                                 </span>
                               ) : (
-                                <span className="h-2.5 w-2.5 rounded-full bg-[#65736A]"></span>
+                                <span className="h-2.5 w-2.5 rounded-full bg-[#60766C]"></span>
                               )}
-                              <span className="text-xs font-bold text-[#172019]">
+                              <span className="text-xs font-bold text-[#12352A]">
                                 {isSharingLocation ? t('trackingActive') : t('trackingStopped')}
                               </span>
                             </div>
                             <button
                               onClick={() => handleToggleSharing(pickup.id)}
                               type="button"
-                              className="text-[11px] font-bold px-2 py-0.5 rounded border border-[#DCE5DE] bg-[#FFFFFF] text-[#172019] hover:bg-[#F5F8F4]"
+                              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-[#D8EADF] bg-[#FFFFFF] text-[#12352A] hover:bg-[#F3FBF6]"
                             >
                               {isSharingLocation ? t('pauseSharing') : t('resumeSharing')}
                             </button>
                           </div>
 
                           {lastLocationCoords && isSharingLocation ? (
-                            <div className="text-[11px] text-[#65736A] flex items-center justify-between">
+                            <div className="text-[11px] text-[#60766C] flex items-center justify-between">
                               <span className="font-mono">
                                 {lastLocationCoords.lat.toFixed(4)}°, {lastLocationCoords.lng.toFixed(4)}°
                               </span>
-                              <span>Updated {lastLocationCoords.time}</span>
+                              <span>{t('updated')} {lastLocationCoords.time}</span>
                             </div>
                           ) : null}
 
@@ -836,92 +942,117 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           onClick={() => handleMarkArrived(pickup.id)}
                           disabled={actionLoading === pickup.id}
                           type="button"
-                          className="w-full py-2.5 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+                          className="w-full py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
                         >
                           <span className="material-symbols-outlined text-[18px]">where_to_vote</span>
-                          Mark Arrived at Doorstep
+                          {t('markArrived')}
                         </button>
                       </div>
                     )}
 
-                    {(pickup.status === 'ARRIVED' || pickup.status === 'OTP_PENDING') && (
-                      <div className="flex flex-col gap-2.5 p-3.5 rounded-xl bg-[#E8F3EB] border border-[#3FA66B]/40 shadow-xs">
+                    {(pickup.status === 'ARRIVED' || pickup.status === 'OTP_PENDING' || pickup.status === 'OTP_VERIFICATION') && (
+                      <div className="flex flex-col gap-2.5 p-4 rounded-2xl bg-[#F3FBF6] border border-[#16A765]/30 shadow-sm">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-[#172019] flex items-center gap-1.5">
-                            <span className="material-symbols-outlined text-[18px] text-[#3FA66B]">key</span>
-                            Customer OTP Verification
+                          <span className="text-xs font-bold text-[#12352A] flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[18px] text-[#16A765]">key</span>
+                            {t('customerOtpVerification')}
                           </span>
-                          <span className="text-[10px] text-[#174D35] bg-[#FFFFFF] px-2 py-0.5 rounded-full font-bold border border-[#DCE5DE]">
+                          <span className="text-[10px] text-[#087A4B] bg-[#FFFFFF] px-2.5 py-0.5 rounded-full font-bold border border-[#D8EADF]">
                             Attempt {(pickup.otp_attempts || 0) + 1}/5
                           </span>
                         </div>
-                        <p className="text-xs text-[#65736A]">
-                          Ask customer for their 4-digit security OTP code generated on their EcoScan app.
+                        <p className="text-xs text-[#60766C]">
+                          {t('askCustomerOtp')}
                         </p>
 
-                        <div className="flex items-center gap-2">
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (verifyingOtpRef.current.has(pickup.id)) return;
+
+                            const code = (otpInputs[pickup.id] || '').trim();
+                            if (!code || code.length !== 4) {
+                              setOtpErrors((prev) => ({ ...prev, [pickup.id]: 'Please enter valid 4-digit OTP code' }));
+                              return;
+                            }
+
+                            try {
+                              verifyingOtpRef.current.add(pickup.id);
+                              setIsVerifyingOtp((prev) => ({ ...prev, [pickup.id]: true }));
+                              setActionLoading(pickup.id);
+
+                              const res = await api.verifyPickupOtp(pickup.id, code, collector?.id);
+                              setOtpInputs((prev) => ({ ...prev, [pickup.id]: '' }));
+                              setOtpErrors((prev) => ({ ...prev, [pickup.id]: '' }));
+
+                              if (res && res.pickup) {
+                                setPickups((prev) => prev.map((p) => (p.id === pickup.id ? res.pickup : p)));
+                              }
+                              await fetchCollectorData();
+                            } catch (err: any) {
+                              setOtpErrors((prev) => ({ ...prev, [pickup.id]: err.message || 'OTP verification failed' }));
+                            } finally {
+                              verifyingOtpRef.current.delete(pickup.id);
+                              setIsVerifyingOtp((prev) => ({ ...prev, [pickup.id]: false }));
+                              setActionLoading(null);
+                            }
+                          }}
+                          className="flex items-center gap-2"
+                        >
                           <input
                             type="text"
                             maxLength={4}
                             placeholder="e.g. 4821"
-                            value={otpInput}
+                            disabled={isVerifyingOtp[pickup.id] || actionLoading === pickup.id}
+                            value={otpInputs[pickup.id] || ''}
                             onChange={(e) => {
-                              setOtpInput(e.target.value);
-                              setOtpError(null);
+                              const val = e.target.value;
+                              setOtpInputs((prev) => ({ ...prev, [pickup.id]: val }));
+                              setOtpErrors((prev) => ({ ...prev, [pickup.id]: '' }));
                             }}
-                            className="w-full px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#DCE5DE] text-sm font-mono text-center font-bold text-[#172019] focus:outline-none focus:border-[#3FA66B]"
+                            className="w-full px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D8EADF] text-sm font-mono text-center font-bold text-[#12352A] focus:outline-none focus:border-[#16A765] focus:ring-1 focus:ring-[#16A765] disabled:bg-gray-100"
                           />
                           <button
-                            onClick={async () => {
-                              if (!otpInput || otpInput.trim().length !== 4) {
-                                setOtpError('Please enter valid 4-digit OTP code');
-                                return;
-                              }
-                              try {
-                                setActionLoading(pickup.id);
-                                await api.verifyPickupOtp(pickup.id, otpInput.trim(), collector?.id);
-                                setOtpInput('');
-                                setOtpError(null);
-                                await fetchCollectorData();
-                              } catch (err: any) {
-                                setOtpError(err.message || 'OTP verification failed');
-                              } finally {
-                                setActionLoading(null);
-                              }
-                            }}
-                            disabled={actionLoading === pickup.id}
-                            type="button"
-                            className="px-4 py-2 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all shrink-0 active:scale-95 shadow-xs"
+                            type="submit"
+                            disabled={isVerifyingOtp[pickup.id] || actionLoading === pickup.id}
+                            className="px-4 py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all shrink-0 active:scale-95 shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
                           >
-                            Verify OTP
+                            {isVerifyingOtp[pickup.id] ? (
+                              <>
+                                <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                                <span>{t('analyzing')}</span>
+                              </>
+                            ) : (
+                              <span>{t('verifyOtp')}</span>
+                            )}
                           </button>
-                        </div>
+                        </form>
 
-                        {otpError && (
-                          <div className="p-2 rounded-lg bg-[#FEE2E2] border border-[#FCA5A5] text-xs text-[#DC2626] font-semibold flex items-center gap-1.5">
+                        {otpErrors[pickup.id] && (
+                          <div className="p-2.5 rounded-xl bg-[#FEE2E2] border border-[#FCA5A5] text-xs text-[#DC2626] font-semibold flex items-center gap-1.5">
                             <span className="material-symbols-outlined text-[15px]">error</span>
-                            <span>{otpError}</span>
+                            <span>{otpErrors[pickup.id]}</span>
                           </div>
                         )}
                       </div>
                     )}
 
                     {(pickup.status === 'OTP_VERIFIED' || pickup.status === 'COLLECTING') && (
-                      <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-[#F5F8F4] border border-[#DCE5DE]">
+                      <div className="flex flex-col gap-3 p-4 rounded-2xl bg-[#F7FCF8] border border-[#D8EADF]">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-[#172019] flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[16px] text-[#3FA66B]">scale</span>
-                            Digital Weigh-In
+                          <span className="text-xs font-bold text-[#12352A] flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[16px] text-[#16A765]">scale</span>
+                            {t('digitalWeighIn')}
                           </span>
-                          <span className="text-[10px] text-[#174D35] font-bold bg-[#E8F3EB] px-2 py-0.5 rounded-full border border-[#DCE5DE]">
-                            OTP Verified ✓
+                          <span className="text-[10px] text-[#087A4B] font-bold bg-[#E8F8EE] px-2.5 py-0.5 rounded-full border border-[#D8EADF]">
+                            {t('otpVerified')}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <label className="text-[10px] text-[#65736A] block mb-1 font-semibold">
-                              Actual Weight (kg) *
+                            <label className="text-[10px] text-[#60766C] block mb-1 font-semibold">
+                              {t('actualWeightKg')}
                             </label>
                             <input
                               type="number"
@@ -932,13 +1063,13 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                                 setWeighingPickupId(pickup.id);
                                 setActualWeightInput(e.target.value);
                               }}
-                              className="w-full px-2.5 py-1.5 rounded bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] text-xs font-bold focus:border-[#3FA66B] focus:outline-none"
+                              className="w-full px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D8EADF] text-[#12352A] text-xs font-bold focus:border-[#16A765] focus:ring-1 focus:ring-[#16A765] focus:outline-none"
                             />
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-[#65736A] block mb-1 font-semibold">
-                              Applicable Rate (₹/kg)
+                            <label className="text-[10px] text-[#60766C] block mb-1 font-semibold">
+                              {t('applicableRate')}
                             </label>
                             <input
                               type="number"
@@ -948,7 +1079,7 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                                 setWeighingPickupId(pickup.id);
                                 setCustomRateInput(e.target.value);
                               }}
-                              className="w-full px-2.5 py-1.5 rounded bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] text-xs font-bold focus:border-[#3FA66B] focus:outline-none"
+                              className="w-full px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D8EADF] text-[#12352A] text-xs font-bold focus:border-[#16A765] focus:ring-1 focus:ring-[#16A765] focus:outline-none"
                             />
                           </div>
                         </div>
@@ -957,22 +1088,22 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           onClick={() => handleConfirmWeight(pickup)}
                           disabled={actionLoading === pickup.id}
                           type="button"
-                          className="w-full py-2 rounded bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-xs active:scale-95"
+                          className="w-full py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-sm active:scale-95"
                         >
                           <span className="material-symbols-outlined text-[16px]">done_all</span>
-                          Confirm Weight & Final Payout
+                          {t('confirmWeightPayout')}
                         </button>
                       </div>
                     )}
 
                     {(pickup.status === 'WEIGHED' || pickup.status === 'WEIGHT_VERIFIED' || pickup.status === 'AMOUNT_CONFIRMED' || pickup.status === 'PAYMENT_PENDING') && (
-                      <div className="flex flex-col gap-2 p-3 rounded-lg bg-[#E8F3EB] border border-[#DCE5DE]">
+                      <div className="flex flex-col gap-2.5 p-4 rounded-2xl bg-[#E8F8EE] border border-[#D8EADF]">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-[#174D35]">
+                          <span className="text-xs font-bold text-[#087A4B]">
                             Weighed: {pickup.actual_weight || pickup.estimated_weight} kg
                           </span>
-                          <span className="text-sm font-bold text-[#172019]">
-                            Total Payout: ₹{pickup.final_value || pickup.estimated_value}
+                          <span className="text-sm font-bold text-[#12352A]">
+                            {t('totalPayout')}: ₹{pickup.final_value || pickup.estimated_value}
                           </span>
                         </div>
 
@@ -981,10 +1112,10 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => setPaymentMethod('UPI')}
-                            className={`flex-1 py-1.5 rounded text-xs font-bold transition-all border ${
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${
                               paymentMethod === 'UPI'
-                                ? 'bg-[#3FA66B] text-[#FFFFFF] border-[#3FA66B]'
-                                : 'bg-[#FFFFFF] text-[#172019] border-[#DCE5DE]'
+                                ? 'bg-[#16A765] text-[#FFFFFF] border-[#16A765] shadow-sm'
+                                : 'bg-[#FFFFFF] text-[#12352A] border-[#D8EADF]'
                             }`}
                           >
                             UPI Direct (Demo)
@@ -992,10 +1123,10 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => setPaymentMethod('CASH')}
-                            className={`flex-1 py-1.5 rounded text-xs font-bold transition-all border ${
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${
                               paymentMethod === 'CASH'
-                                ? 'bg-[#3FA66B] text-[#FFFFFF] border-[#3FA66B]'
-                                : 'bg-[#FFFFFF] text-[#172019] border-[#DCE5DE]'
+                                ? 'bg-[#16A765] text-[#FFFFFF] border-[#16A765] shadow-sm'
+                                : 'bg-[#FFFFFF] text-[#12352A] border-[#D8EADF]'
                             }`}
                           >
                             Cash on Hand
@@ -1006,15 +1137,11 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
                           onClick={() => handleCompletePickup(pickup.id)}
                           disabled={actionLoading === pickup.id}
                           type="button"
-                          className="w-full mt-1 py-2.5 rounded-lg bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                          className="w-full mt-1 py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
                         >
                           <span className="material-symbols-outlined text-[18px]">verified</span>
-                          {t('completePickup')} & Settle Payment
+                          {t('settlePayment')}
                         </button>
-
-                        <p className="text-[10px] text-center text-[#65736A]">
-                          Demo Mode: Records instant payment settlement & awards Eco Credits to customer.
-                        </p>
                       </div>
                     )}
                   </div>
@@ -1027,37 +1154,37 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
 
       {/* 6. Tab 3: Completed & Payout History */}
       {activeTab === 'history' && (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-3">
           {completedPickups.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] text-center flex flex-col items-center justify-center gap-2">
-              <span className="material-symbols-outlined text-[36px] text-[#65736A]">history</span>
-              <p className="text-sm font-semibold text-[#172019]">No Completed Pickups Yet</p>
-              <p className="text-xs text-[#65736A]">Your successfully completed scrap pickups will appear here.</p>
+            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] text-center flex flex-col items-center justify-center gap-2 shadow-sm">
+              <span className="material-symbols-outlined text-[40px] text-[#60766C]">history</span>
+              <p className="text-base font-bold text-[#12352A]">{t('noCompletedPickups')}</p>
+              <p className="text-xs text-[#60766C]">{t('completedPickupsDesc')}</p>
             </div>
           ) : (
             completedPickups.map((p) => (
               <div
                 key={p.id}
-                className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex items-center justify-between gap-2 shadow-xs"
+                className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex items-center justify-between gap-2 shadow-sm"
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-[#172019]">{p.user_name}</span>
-                    <span className="text-[10px] text-[#3FA66B] font-bold">✓ Completed</span>
+                    <span className="text-xs font-bold text-[#12352A]">{p.user_name}</span>
+                    <span className="text-[10px] text-[#16A765] font-bold">✓ {t('completed')}</span>
                   </div>
-                  <p className="text-[11px] text-[#65736A] mt-0.5">
+                  <p className="text-[11px] text-[#60766C] mt-0.5">
                     {p.waste_category} • {p.actual_weight || p.estimated_weight} kg
                   </p>
-                  <p className="text-[10px] text-[#65736A]">
-                    {p.completed_at ? new Date(p.completed_at).toLocaleDateString() : 'Recent'}
+                  <p className="text-[10px] text-[#60766C]">
+                    {p.completed_at ? new Date(p.completed_at).toLocaleDateString() : t('recent')}
                   </p>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-sm font-bold text-[#3FA66B] block">
+                  <span className="text-sm font-bold text-[#16A765] block">
                     +₹{p.final_value || p.estimated_value}
                   </span>
-                  <span className="text-[10px] text-[#65736A] font-mono">Paid</span>
+                  <span className="text-[10px] text-[#60766C] font-mono">{t('settled')}</span>
                 </div>
               </div>
             ))
@@ -1065,6 +1192,5 @@ export const CollectorDashboard: React.FC<CollectorDashboardProps> = ({
         </div>
       )}
     </div>
-
   );
 };

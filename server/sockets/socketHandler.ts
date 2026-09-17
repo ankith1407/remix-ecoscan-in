@@ -97,3 +97,8 @@ export function notifyCollectorNotification(collectorId: string, notification: a
   if (!io) return;
   io.to(`collector_${collectorId}`).emit('notification_received', notification);
 }
+
+export function notifyAdminNotification(notification: any) {
+  if (!io) return;
+  io.to('admin_room').emit('notification_received', notification);
+}

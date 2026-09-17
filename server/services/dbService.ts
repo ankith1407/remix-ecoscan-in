@@ -14,6 +14,8 @@ import {
   DbUserActivity,
   DbWasteScan,
   DbPickupRating,
+  DbPointRule,
+  DbUserAchievement,
   PickupStatus,
   RecipientRole,
   PartnerDashboardData,
@@ -155,6 +157,127 @@ export class DbService {
             totalEarnings: 48950,
           },
         });
+      }
+
+      // Seed default PointRules if empty
+      const pointRuleCount = await prisma.pointRule.count();
+      if (pointRuleCount === 0) {
+        const defaultRules = [
+          { category: 'Dry Recyclables', pointsPerKg: 10, minWeightKg: 0.5 },
+          { category: 'Plastic', pointsPerKg: 10, minWeightKg: 0.5 },
+          { category: 'Paper', pointsPerKg: 5, minWeightKg: 0.5 },
+          { category: 'Cardboard', pointsPerKg: 5, minWeightKg: 0.5 },
+          { category: 'Metal', pointsPerKg: 15, minWeightKg: 0.5 },
+          { category: 'E-waste', pointsPerKg: 25, minWeightKg: 0.1 },
+          { category: 'Glass', pointsPerKg: 3, minWeightKg: 1.0 },
+          { category: 'Organic', pointsPerKg: 2, minWeightKg: 1.0 },
+        ];
+        for (const rule of defaultRules) {
+          await prisma.pointRule.upsert({
+            where: { category: rule.category },
+            update: {},
+            create: rule,
+          });
+        }
+      }
+
+      // Seed default Partners and RewardItems if empty
+      const rewardCount = await prisma.rewardItem.count();
+      if (rewardCount === 0) {
+        let partner = await prisma.partner.findFirst();
+        if (!partner) {
+          partner = await prisma.partner.create({
+            data: {
+              id: 'part-green-store',
+              partnerName: 'GreenMart Organics & Eco Store',
+              category: 'shopping',
+              description: 'Sustainable grocery & eco-friendly daily essentials store.',
+              locationArea: 'Banjara Hills, Hyderabad',
+              contactInfo: 'support@greenmart.in',
+              rewardTypes: 'Discount Coupon',
+              startDate: '2026-01-01',
+              expiryDate: '2027-12-31',
+              termsAndConditions: 'Valid on purchases above ₹500. Cannot be combined with other offers.',
+              active: true,
+              cityAvailability: 'Hyderabad',
+            },
+          });
+        }
+
+        const defaultRewards = [
+          {
+            id: 'rw-1',
+            partnerId: partner.id,
+            partnerName: 'GreenMart Organics',
+            title: '₹100 Off Organic Groceries',
+            description: 'Get ₹100 instant discount on eco-certified sustainable groceries and organic pulses.',
+            rewardCategory: 'Grocery',
+            creditsRequired: 50,
+            discountValue: '₹100 Off',
+            rewardType: 'Discount Coupon',
+            terms: 'Valid on order value above ₹499 at GreenMart store or app.',
+            expiryDate: '2026-12-31',
+            stock: 100,
+            active: true,
+            codeTemplate: 'GREEN-XXXXXX',
+          },
+          {
+            id: 'rw-2',
+            partnerId: partner.id,
+            partnerName: 'EcoCafé Hyderabad',
+            title: 'Free Artisan Organic Coffee / Tea',
+            description: 'Redeem 1 free cup of organic fair-trade coffee or green tea at any EcoCafé outlet.',
+            rewardCategory: 'Food & Beverage',
+            creditsRequired: 30,
+            discountValue: 'Free Drink',
+            rewardType: 'Voucher',
+            terms: 'Show voucher code at billing counter before ordering.',
+            expiryDate: '2026-12-31',
+            stock: 75,
+            active: true,
+            codeTemplate: 'CAFE-XXXXXX',
+          },
+          {
+            id: 'rw-3',
+            partnerId: partner.id,
+            partnerName: 'BambooLife India',
+            title: '20% Off Bamboo Toothbrush & Utensils Set',
+            description: 'Zero-waste eco living hamper containing bamboo toothbrush, steel straw, and cotton tote bag.',
+            rewardCategory: 'Eco Products',
+            creditsRequired: 80,
+            discountValue: '20% Off',
+            rewardType: 'Discount Coupon',
+            terms: 'Use code during online checkout at BambooLife.in.',
+            expiryDate: '2026-12-31',
+            stock: 50,
+            active: true,
+            codeTemplate: 'BAMBOO-XXXXXX',
+          },
+          {
+            id: 'rw-4',
+            partnerId: partner.id,
+            partnerName: 'Metro Green Pass',
+            title: '₹50 Transit Fare Recharge Top-Up',
+            description: 'Support green public transport! ₹50 smart card top-up for Hyderabad Metro Rail.',
+            rewardCategory: 'Travel & Mobility',
+            creditsRequired: 100,
+            discountValue: '₹50 Fare Credit',
+            rewardType: 'Digital Voucher',
+            terms: 'Recharge using metro smart card serial number in app.',
+            expiryDate: '2026-12-31',
+            stock: 40,
+            active: true,
+            codeTemplate: 'METRO-XXXXXX',
+          },
+        ];
+
+        for (const rw of defaultRewards) {
+          await prisma.rewardItem.upsert({
+            where: { id: rw.id },
+            update: {},
+            create: rw,
+          });
+        }
       }
     } catch (err: any) {
       console.warn('[DbService] Error seeding default data:', err?.message);
@@ -663,24 +786,22 @@ export class DbService {
       ...updates,
     };
 
-    return this.savePickup(merged);
-  }
-
-    // Add status log entry if status changed
     if (updates.status && updates.status !== existing.status) {
-      await prisma.pickupStatusLog.create({
-        data: {
-          pickupId: id,
-          oldStatus: existing.status,
-          newStatus: updates.status,
-          title: `Status updated to ${updates.status}`,
-          changedBy: updates.collector_id || updates.user_id || 'system',
-          changedByRole: 'system',
-        },
-      });
+      const logEntry = {
+        id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        pickup_id: id,
+        old_status: existing.status,
+        new_status: updates.status,
+        status: updates.status,
+        title: `Status updated to ${updates.status}`,
+        changed_by: updates.collector_id || updates.user_id || 'system',
+        changed_by_role: 'system' as RecipientRole,
+        timestamp: new Date().toISOString(),
+      };
+      merged.status_history = merged.status_history ? [...merged.status_history, logEntry] : [logEntry];
     }
 
-    return await this.getPickupById(updated.id);
+    return this.savePickup(merged);
   }
 
   static async addPickupStatusLog(
@@ -1028,4 +1149,149 @@ export class DbService {
       recentPayments: recentPayments.slice(0, 8),
     };
   }
+
+  // ── Point Rules ────────────────────────────────────────────────────────────
+  static async getPointRules(): Promise<DbPointRule[]> {
+    await this.seedDefaultDataIfEmpty();
+    const rules = await prisma.pointRule.findMany({ orderBy: { category: 'asc' } });
+    return rules.map((r) => ({
+      id: r.id,
+      category: r.category,
+      points_per_kg: r.pointsPerKg,
+      min_weight_kg: r.minWeightKg,
+      active: r.active,
+      updated_at: r.updatedAt.toISOString(),
+    }));
+  }
+
+  static async getPointRuleForCategory(category: string): Promise<DbPointRule | null> {
+    const rule = await prisma.pointRule.findFirst({
+      where: {
+        category: { equals: category },
+        active: true,
+      },
+    });
+    if (rule) {
+      return {
+        id: rule.id,
+        category: rule.category,
+        points_per_kg: rule.pointsPerKg,
+        min_weight_kg: rule.minWeightKg,
+        active: rule.active,
+        updated_at: rule.updatedAt.toISOString(),
+      };
+    }
+    return null;
+  }
+
+  static async savePointRule(rule: { category: string; points_per_kg: number; min_weight_kg?: number; active?: boolean }): Promise<DbPointRule> {
+    const updated = await prisma.pointRule.upsert({
+      where: { category: rule.category },
+      update: {
+        pointsPerKg: rule.points_per_kg,
+        ...(rule.min_weight_kg !== undefined && { minWeightKg: rule.min_weight_kg }),
+        ...(rule.active !== undefined && { active: rule.active }),
+      },
+      create: {
+        category: rule.category,
+        pointsPerKg: rule.points_per_kg,
+        minWeightKg: rule.min_weight_kg ?? 0.5,
+        active: rule.active ?? true,
+      },
+    });
+    return {
+      id: updated.id,
+      category: updated.category,
+      points_per_kg: updated.pointsPerKg,
+      min_weight_kg: updated.minWeightKg,
+      active: updated.active,
+      updated_at: updated.updatedAt.toISOString(),
+    };
+  }
+
+  // ── User Achievements ──────────────────────────────────────────────────────
+  static async getUserAchievements(userId: string): Promise<DbUserAchievement[]> {
+    const achs = await prisma.userAchievement.findMany({
+      where: { userId },
+      orderBy: { unlockedAt: 'desc' },
+    });
+    return achs.map((a) => ({
+      id: a.id,
+      user_id: a.userId,
+      badge_key: a.badgeKey,
+      title: a.title,
+      description: a.description,
+      icon: a.icon,
+      bonus_credits: a.bonusCredits,
+      unlocked_at: a.unlockedAt.toISOString(),
+    }));
+  }
+
+  static async awardAchievement(ach: {
+    userId: string;
+    badgeKey: string;
+    title: string;
+    description: string;
+    icon?: string;
+    bonusCredits?: number;
+  }): Promise<{ achievement: DbUserAchievement; newlyUnlocked: boolean }> {
+    const existing = await prisma.userAchievement.findUnique({
+      where: { userId_badgeKey: { userId: ach.userId, badgeKey: ach.badgeKey } },
+    });
+
+    if (existing) {
+      return {
+        achievement: {
+          id: existing.id,
+          user_id: existing.userId,
+          badge_key: existing.badgeKey,
+          title: existing.title,
+          description: existing.description,
+          icon: existing.icon,
+          bonus_credits: existing.bonusCredits,
+          unlocked_at: existing.unlockedAt.toISOString(),
+        },
+        newlyUnlocked: false,
+      };
+    }
+
+    const created = await prisma.userAchievement.create({
+      data: {
+        userId: ach.userId,
+        badgeKey: ach.badgeKey,
+        title: ach.title,
+        description: ach.description,
+        icon: ach.icon || '🏆',
+        bonusCredits: ach.bonusCredits || 0,
+      },
+    });
+
+    if (ach.bonusCredits && ach.bonusCredits > 0) {
+      await this.addEcoTransaction({
+        id: `tx-bonus-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        user_id: ach.userId,
+        type: 'BONUS',
+        credits: ach.bonusCredits,
+        source: 'achievement_unlocked',
+        reference_id: `ach_${created.id}`,
+        description: `Unlocked Achievement: ${ach.title}`,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    return {
+      achievement: {
+        id: created.id,
+        user_id: created.userId,
+        badge_key: created.badgeKey,
+        title: created.title,
+        description: created.description,
+        icon: created.icon,
+        bonus_credits: created.bonusCredits,
+        unlocked_at: created.unlockedAt.toISOString(),
+      },
+      newlyUnlocked: true,
+    };
+  }
 }
+

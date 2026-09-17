@@ -15,7 +15,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   return (
     <nav className="fixed bottom-0 w-full z-50 pb-safe pointer-events-none">
       <div className="max-w-lg mx-auto px-4 mb-2.5 pointer-events-auto">
-        <div className="bg-[#FFFFFF]/95 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgba(17,17,17,0.08)] px-3 py-1.5 border border-[#DCE5DE]">
+        <div className="bg-white/95 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgba(22,167,101,0.12)] px-3 py-1.5 border border-[#D8EADF]">
           <div className="flex justify-between items-center h-14">
             {/* 1. Dashboard */}
             <button
@@ -23,8 +23,8 @@ export const Navigation: React.FC<NavigationProps> = ({
               aria-current={currentScreen === 'dashboard' ? 'page' : undefined}
               className={`flex flex-col items-center justify-center flex-1 h-full transition-all group ${
                 currentScreen === 'dashboard'
-                  ? 'text-[#3FA66B] font-bold scale-105'
-                  : 'text-[#65736A] hover:text-[#111111]'
+                  ? 'text-[#16A765] font-bold scale-105'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
               type="button"
             >
@@ -40,8 +40,8 @@ export const Navigation: React.FC<NavigationProps> = ({
               aria-current={currentScreen === 'facilities' ? 'page' : undefined}
               className={`flex flex-col items-center justify-center flex-1 h-full transition-all group ${
                 currentScreen === 'facilities'
-                  ? 'text-[#3FA66B] font-bold scale-105'
-                  : 'text-[#65736A] hover:text-[#111111]'
+                  ? 'text-[#16A765] font-bold scale-105'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
               type="button"
             >
@@ -56,8 +56,8 @@ export const Navigation: React.FC<NavigationProps> = ({
               <button
                 onClick={() => onSelectScreen('scan')}
                 aria-label={t('scanWaste')}
-                className={`w-12 h-12 rounded-full bg-[#3FA66B] flex items-center justify-center shadow-[0_4px_20px_rgba(63,166,107,0.35)] text-[#FFFFFF] transition-transform active:scale-90 hover:brightness-105 border border-[#3FA66B] ${
-                  currentScreen === 'scan' ? 'ring-4 ring-[#3FA66B]/30 scale-105' : ''
+                className={`w-12 h-12 rounded-full bg-gradient-to-r from-[#16A765] to-[#45C96B] flex items-center justify-center shadow-[0_4px_20px_rgba(22,167,101,0.4)] text-[#FFFFFF] transition-transform active:scale-90 hover:brightness-105 border border-[#16A765] ${
+                  currentScreen === 'scan' ? 'ring-4 ring-[#16A765]/30 scale-105' : ''
                 }`}
                 type="button"
               >
@@ -73,8 +73,8 @@ export const Navigation: React.FC<NavigationProps> = ({
               aria-current={currentScreen === 'rewards' ? 'page' : undefined}
               className={`flex flex-col items-center justify-center flex-1 h-full transition-all group ${
                 currentScreen === 'rewards'
-                  ? 'text-[#3FA66B] font-bold scale-105'
-                  : 'text-[#65736A] hover:text-[#111111]'
+                  ? 'text-[#16A765] font-bold scale-105'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
               type="button"
             >
@@ -90,8 +90,8 @@ export const Navigation: React.FC<NavigationProps> = ({
               aria-current={currentScreen === 'guide' ? 'page' : undefined}
               className={`flex flex-col items-center justify-center flex-1 h-full transition-all group ${
                 currentScreen === 'guide'
-                  ? 'text-[#3FA66B] font-bold scale-105'
-                  : 'text-[#65736A] hover:text-[#111111]'
+                  ? 'text-[#16A765] font-bold scale-105'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
               type="button"
             >

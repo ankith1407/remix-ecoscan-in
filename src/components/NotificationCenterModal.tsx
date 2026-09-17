@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { DbNotification } from '../types';
+import { DbNotification, UserRole } from '../types';
 import { useI18n } from '../i18n';
 
 interface NotificationCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
+  activeRole?: UserRole;
   notifications: DbNotification[];
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
@@ -15,6 +16,7 @@ interface NotificationCenterModalProps {
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({
   isOpen,
   onClose,
+  activeRole = 'user',
   notifications,
   onMarkRead,
   onMarkAllRead,
@@ -71,39 +73,78 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     }
   };
 
+  const deskTitle =
+    activeRole === 'admin'
+      ? 'Admin Control Feed'
+      : activeRole === 'collector'
+      ? 'Kabadiwala Dispatch Alerts'
+      : 'Citizen Recycler Alerts';
+
+  const deskHeaderBg =
+    activeRole === 'admin'
+      ? 'bg-rose-50 border-rose-200'
+      : activeRole === 'collector'
+      ? 'bg-amber-50 border-amber-200'
+      : 'bg-[#E8F8EE] border-[#D8EADF]';
+
+  const deskBadgeColor =
+    activeRole === 'admin'
+      ? 'bg-red-600 text-white'
+      : activeRole === 'collector'
+      ? 'bg-amber-600 text-white'
+      : 'bg-[#16A765] text-white';
+
+  const deskIcon =
+    activeRole === 'admin'
+      ? 'admin_panel_settings'
+      : activeRole === 'collector'
+      ? 'local_shipping'
+      : 'notifications_active';
+
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-[#FFFFFF] rounded-3xl border border-[#D8EADF] w-full max-w-md max-h-[85vh] flex flex-col shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-5 py-4 bg-[#E8F3EB] border-b border-[#DCE5DE] flex items-center justify-between">
+        <div className={`px-5 py-4 border-b flex items-center justify-between ${deskHeaderBg}`}>
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-[#3FA66B] flex items-center justify-center text-white shadow-xs">
-              <span className="material-symbols-outlined text-[20px]">notifications_active</span>
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shadow-xs ${deskBadgeColor}`}>
+              <span className="material-symbols-outlined text-[20px]">{deskIcon}</span>
             </div>
             <div>
-              <h3 className="font-bold text-[#172019] text-base leading-tight">{t('notifications')}</h3>
-              <p className="text-xs text-[#65736A] font-medium">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-[#12352A] text-base leading-tight">{deskTitle}</h3>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                  activeRole === 'admin'
+                    ? 'bg-red-100 text-red-700'
+                    : activeRole === 'collector'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-[#E8F8EE] text-[#16A765]'
+                }`}>
+                  {activeRole === 'admin' ? 'Admin Desk' : activeRole === 'collector' ? 'Kabadiwala Desk' : 'Citizen Desk'}
+                </span>
+              </div>
+              <p className="text-xs text-[#60766C] font-medium mt-0.5">
                 {unreadCount > 0 ? `${unreadCount} unread update${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-[#65736A] flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-[#60766C] hover:text-[#12352A] flex items-center justify-center transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
 
         {/* Filter Tabs & Actions */}
-        <div className="px-5 py-3 border-b border-gray-100 bg-white flex items-center justify-between gap-2">
-          <div className="flex bg-gray-100 p-1 rounded-xl">
+        <div className="px-5 py-3 border-b border-[#D8EADF] bg-white flex items-center justify-between gap-2">
+          <div className="flex bg-[#F3FBF6] p-1 rounded-xl border border-[#D8EADF]/60">
             <button
               onClick={() => setActiveTab('unread')}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'unread'
-                  ? 'bg-white text-[#172019] shadow-xs'
-                  : 'text-[#65736A] hover:text-[#172019]'
+                  ? 'bg-white text-[#12352A] shadow-xs'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
             >
               Unread ({unreadCount})
@@ -112,8 +153,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               onClick={() => setActiveTab('all')}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'all'
-                  ? 'bg-white text-[#172019] shadow-xs'
-                  : 'text-[#65736A] hover:text-[#172019]'
+                  ? 'bg-white text-[#12352A] shadow-xs'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
             >
               All ({notifications.length})
@@ -123,7 +164,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           {unreadCount > 0 && (
             <button
               onClick={onMarkAllRead}
-              className="text-xs font-bold text-[#3FA66B] hover:text-[#2d7d50] flex items-center gap-1 transition-colors"
+              className="text-xs font-bold text-[#16A765] hover:text-[#087A4B] flex items-center gap-1 transition-colors"
             >
               <span className="material-symbols-outlined text-[15px]">done_all</span>
               {t('markAllRead')}
@@ -132,14 +173,14 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         </div>
 
         {/* Notification List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2.5 divide-y divide-gray-50">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5 divide-y divide-[#D8EADF]/40">
           {displayedNotifications.length === 0 ? (
             <div className="py-12 text-center flex flex-col items-center justify-center">
-              <div className="w-14 h-14 rounded-full bg-[#E8F3EB] text-[#3FA66B] flex items-center justify-center mb-3">
+              <div className="w-14 h-14 rounded-full bg-[#E8F8EE] text-[#16A765] flex items-center justify-center mb-3">
                 <span className="material-symbols-outlined text-3xl">notifications_off</span>
               </div>
-              <p className="font-semibold text-gray-700 text-sm">{t('noNotifications')}</p>
-              <p className="text-xs text-gray-500 mt-1 max-w-[220px]">
+              <p className="font-semibold text-[#12352A] text-sm">{t('noNotifications')}</p>
+              <p className="text-xs text-[#60766C] mt-1 max-w-[220px]">
                 {activeTab === 'unread'
                   ? "You don't have any unread updates right now."
                   : 'Your notification center is empty.'}
@@ -162,8 +203,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   }}
                   className={`pt-2.5 first:pt-0 p-3 rounded-2xl transition-all cursor-pointer border ${
                     isUnread
-                      ? 'bg-[#E8F3EB]/60 border-[#3FA66B]/30 hover:bg-[#E8F3EB]'
-                      : 'bg-white border-transparent hover:bg-gray-50'
+                      ? 'bg-[#E8F8EE]/70 border-[#D8EADF] hover:bg-[#E8F8EE]'
+                      : 'bg-white border-transparent hover:bg-[#F3FBF6]'
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -173,15 +214,15 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <h4 className="font-bold text-xs text-[#172019] truncate">{notif.title}</h4>
-                        <span className="text-[10px] font-medium text-gray-400 shrink-0">
+                        <h4 className="font-bold text-xs text-[#12352A] truncate">{notif.title}</h4>
+                        <span className="text-[10px] font-medium text-[#60766C] shrink-0">
                           {formatTime(notif.created_at)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-600 leading-snug">{notif.message}</p>
+                      <p className="text-xs text-[#60766C] leading-snug">{notif.message}</p>
 
                       {notif.pickup_id && (
-                        <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#3FA66B] hover:underline">
+                        <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#16A765] hover:underline">
                           <span>View Pickup Status</span>
                           <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
                         </div>
@@ -189,7 +230,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                     </div>
 
                     {isUnread && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#3FA66B] shrink-0 mt-1" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#16A765] shrink-0 mt-1" />
                     )}
                   </div>
                 </div>
@@ -199,20 +240,20 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs">
+        <div className="p-3 bg-[#F7FCF8] border-t border-[#D8EADF] flex items-center justify-between text-xs">
           {onOpenActivityHistory ? (
             <button
               onClick={() => {
                 onClose();
                 onOpenActivityHistory();
               }}
-              className="w-full py-2 px-3 rounded-xl bg-white border border-gray-200 text-[#172019] font-bold text-center hover:bg-gray-100 transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2 px-3 rounded-xl bg-white border border-[#D8EADF] text-[#12352A] font-bold text-center hover:bg-[#E8F8EE] transition-colors flex items-center justify-center gap-1.5 shadow-xs"
             >
               <span className="material-symbols-outlined text-[16px]">history</span>
               View Full Activity Log Timeline
             </button>
           ) : (
-            <div className="text-gray-400 text-center w-full">EcoScan Verified System Notifications</div>
+            <div className="text-[#60766C] text-center w-full">EcoScan Verified System Notifications</div>
           )}
         </div>
       </div>

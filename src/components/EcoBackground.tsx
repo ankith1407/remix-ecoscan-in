@@ -102,25 +102,34 @@ export const EcoBackground: React.FC<EcoBackgroundProps> = ({
         }}
       />
 
-      {/* Translucent Curved Organic Waves (Inspired by natural leaf forms & circular recycling flow) */}
+      {/* Translucent Curved Organic Waves & Floating Floral Petal Vectors */}
       <svg
-        className="absolute inset-0 w-full h-full pointer-events-none opacity-40"
+        className="absolute inset-0 w-full h-full pointer-events-none opacity-50"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 1440 900"
         preserveAspectRatio="none"
       >
         <defs>
           <linearGradient id="eco-wave-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#43B978" stopOpacity="0.12" />
-            <stop offset="50%" stopColor="#CDEBDD" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#DCEBE1" stopOpacity="0.05" />
+            <stop offset="0%" stopColor="#16A765" stopOpacity="0.15" />
+            <stop offset="50%" stopColor="#E9F8EF" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#0B5138" stopOpacity="0.05" />
           </linearGradient>
 
           <linearGradient id="eco-wave-grad-2" x1="100%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#174D35" stopOpacity="0.06" />
-            <stop offset="70%" stopColor="#43B978" stopOpacity="0.1" />
-            <stop offset="100%" stopColor="#F5F8F4" stopOpacity="0" />
+            <stop offset="0%" stopColor="#063B2A" stopOpacity="0.08" />
+            <stop offset="70%" stopColor="#45C96B" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#F4FBF6" stopOpacity="0" />
           </linearGradient>
+
+          {/* Floral Petal Definition */}
+          <g id="eco-petal-shape">
+            <path
+              d="M0,0 C15,-20 35,-15 35,0 C35,15 15,30 0,35 C-15,30 -35,15 -35,0 C-35,-15 -15,-20 0,0 Z"
+              fill="#16A765"
+              fillOpacity="0.18"
+            />
+          </g>
         </defs>
 
         {/* Dynamic organic leaf-inspired curve 1 */}
@@ -135,11 +144,17 @@ export const EcoBackground: React.FC<EcoBackgroundProps> = ({
           fill="url(#eco-wave-grad-2)"
         />
 
+        {/* Floating Floral Petals Accents */}
+        <use href="#eco-petal-shape" x="150" y="120" transform="scale(0.8) rotate(25)" />
+        <use href="#eco-petal-shape" x="1250" y="180" transform="scale(0.9) rotate(-40)" />
+        <use href="#eco-petal-shape" x="90" y="680" transform="scale(0.7) rotate(60)" />
+        <use href="#eco-petal-shape" x="1320" y="720" transform="scale(1.1) rotate(-15)" />
+
         {/* Ultra-faint organic line accents */}
         <path
           d="M 50,150 Q 400,320 850,190 T 1450,280"
           fill="none"
-          stroke="#43B978"
+          stroke="#16A765"
           strokeWidth="1.2"
           strokeOpacity="0.14"
           strokeDasharray="6 8"
@@ -148,7 +163,7 @@ export const EcoBackground: React.FC<EcoBackgroundProps> = ({
         <path
           d="M -50,500 Q 500,620 950,480 T 1500,610"
           fill="none"
-          stroke="#174D35"
+          stroke="#063B2A"
           strokeWidth="1"
           strokeOpacity="0.08"
         />

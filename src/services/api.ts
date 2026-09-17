@@ -272,7 +272,11 @@ export const api = {
     try {
       const res = await fetch('/api/waste/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
         body: JSON.stringify({ image: imageBase64, mimeType, userId, language }),
         signal: controller.signal,
       });
@@ -451,9 +455,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ otp, collector_id: collectorId }),
     });
-    const data = await res.json().catch(() => ({ error: 'Failed to verify OTP' }));
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      data = { error: res.status === 429 ? 'Too many verification attempts. Please wait a moment and try again.' : `Server response error (${res.status})` };
+    }
     if (!res.ok) {
-      throw new Error(data.error || 'Failed to verify OTP');
+      throw new Error(data.message || data.error || 'Failed to verify OTP');
     }
     return data;
   },
@@ -626,8 +635,24 @@ export const api = {
     return res.json();
   },
 
+  async getWalletSummary(): Promise<{
+    ecoCredits: number;
+    lifetimeEarned: number;
+    totalWasteRecycledKg: number;
+    co2OffsetKg: number;
+    treesSaved: number;
+    waterPreservedLiters: number;
+    recentTransactions: DbEcoTxItem[];
+    activeVouchers: DbRewardRedemption[];
+    achievements: any[];
+  }> {
+    const res = await fetch('/api/rewards/wallet');
+    if (!res.ok) throw new Error('Failed to fetch wallet summary');
+    return res.json();
+  },
+
   async addReward(data: Partial<DbRewardItem>): Promise<DbRewardItem> {
-    const res = await fetch('/api/rewards', {
+    const res = await fetch('/api/admin/rewards', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -637,7 +662,7 @@ export const api = {
   },
 
   async updateReward(id: string, updates: Partial<DbRewardItem>): Promise<DbRewardItem> {
-    const res = await fetch(`/api/rewards/${id}`, {
+    const res = await fetch(`/api/admin/rewards/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -649,8 +674,8 @@ export const api = {
   async redeemReward(
     userId: string,
     rewardId: string
-  ): Promise<{ redemption: DbRewardRedemption; remaining_credits: number }> {
-    const res = await fetch('/api/rewards/redeem', {
+  ): Promise<{ redemption: DbRewardRedemption; remaining_credits?: number; message?: string }> {
+    const res = await fetch(`/api/rewards/${rewardId}/redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, reward_id: rewardId }),
@@ -663,8 +688,24 @@ export const api = {
   },
 
   async getRedemptions(userId?: string): Promise<DbRewardRedemption[]> {
-    const res = await fetch(`/api/rewards/redemptions${userId ? `?userId=${userId}` : ''}`);
+    const res = await fetch('/api/rewards/history');
     if (!res.ok) throw new Error('Failed to fetch redemptions');
+    return res.json();
+  },
+
+  async getPointRules(): Promise<{ id: string; category: string; points_per_kg: number; min_weight_kg: number; active: boolean }[]> {
+    const res = await fetch('/api/admin/point-rules');
+    if (!res.ok) throw new Error('Failed to fetch point rules');
+    return res.json();
+  },
+
+  async updatePointRule(rule: { category: string; points_per_kg: number; min_weight_kg?: number; active?: boolean }): Promise<any> {
+    const res = await fetch('/api/admin/point-rules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rule),
+    });
+    if (!res.ok) throw new Error('Failed to update point rule');
     return res.json();
   },
 
@@ -714,11 +755,11 @@ export const api = {
     return res.json();
   },
 
-  async markAllNotificationsRead(userId: string): Promise<void> {
+  async markAllNotificationsRead(userId?: string, role?: string): Promise<void> {
     const res = await fetch('/api/notifications/read-all', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, role }),
     });
     if (!res.ok) throw new Error('Failed to mark all notifications as read');
   },

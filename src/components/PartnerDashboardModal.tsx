@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DbPartner, PartnerDashboardData } from '../types';
 import { api } from '../services/api';
+import { CollectorAvatar } from './CollectorAvatar';
 
 interface PartnerDashboardModalProps {
   isOpen: boolean;
@@ -115,9 +116,11 @@ export const PartnerDashboardModal: React.FC<PartnerDashboardModalProps> = ({
         {/* Header & Partner Selector */}
         <div className="flex items-center justify-between pb-3 border-b border-[#DCE5DE]">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#E8F3EB] border border-[#3FA66B] flex items-center justify-center text-[#3FA66B]">
-              <span className="material-symbols-outlined text-[26px]">storefront</span>
-            </div>
+            <CollectorAvatar
+              name={dashboardData?.partner.partner_name || 'Raju Kumar (Green Earth Kabadiwala Hub)'}
+              size="lg"
+              showVerifiedBadge={true}
+            />
             <div>
               <div className="flex items-center gap-2">
                 <span className="badge-artistic">Partner Portal</span>

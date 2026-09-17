@@ -58,6 +58,35 @@ function isGeminiModelNotFoundError(error: unknown): boolean {
   );
 }
 
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+async function generateContentWithModelFallback(
+  ai: GoogleGenAI,
+  contents: any,
+  config?: any
+) {
+  let lastError: any = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      console.log(`[EcoScan AI] Querying Gemini Vision API model: ${model}`);
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        ...(config ? { config } : {}),
+      });
+      if (response && response.text) {
+        console.log(`[EcoScan AI] Successfully received response from model: ${model}`);
+        return response;
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[EcoScan AI] Model ${model} returned error:`, err?.message || err);
+      continue;
+    }
+  }
+  throw lastError || new Error('All Gemini AI model candidates failed to return a valid response.');
+}
+
 function isGeminiTemporaryError(error: unknown): boolean {
   const { status, text } = getGeminiErrorDetails(error);
   const numericStatus = typeof status === 'string' ? Number(status) : status;
@@ -101,14 +130,18 @@ function getApiKey(): string | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
+let currentApiKey: string | null = null;
+
 function getGenAI(): GoogleGenAI | null {
   const apiKey = getApiKey();
   if (!apiKey) {
-    console.warn('[Gemini] GEMINI_API_KEY is not set in environment.');
+    aiClient = null;
+    currentApiKey = null;
     return null;
   }
-  if (!aiClient) {
+  if (!aiClient || currentApiKey !== apiKey) {
     aiClient = new GoogleGenAI({ apiKey });
+    currentApiKey = apiKey;
   }
   return aiClient;
 }
@@ -307,16 +340,21 @@ export async function analyzeWasteImage(
   language: GeminiLanguage = 'EN'
 ): Promise<WasteAnalysisResult> {
   const responseLanguage = normalizeLanguage(language);
-  const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, '');
+  const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, '').trim();
   const ai = getGenAI();
 
   if (!ai) {
-    // No API key configured — throw so server returns 503, not a fake result.
-    console.warn('[Gemini] GEMINI_API_KEY not set.');
-    throw new GeminiUnavailableError(
-      'AI analysis is not configured on this server. Please contact support.'
-    );
+    console.error('[EcoScan AI] GEMINI_API_KEY is not configured on the server.');
+    throw new GeminiUnavailableError('Gemini API key is not configured on the server. Please set a valid GEMINI_API_KEY in your .env file.');
   }
+
+  console.log('[EcoScan AI] Starting image analysis request:', {
+    mimeType: mimeType || 'image/jpeg',
+    payloadLength: cleanBase64.length,
+    estimatedSizeKb: Math.round((cleanBase64.length * 0.75) / 1024),
+    language: responseLanguage,
+    timestamp: new Date().toISOString(),
+  });
 
   // Current materials and prices for context
   const materials = db.getMaterials();
@@ -392,94 +430,90 @@ Respond strictly in the JSON schema provided.`;
       },
     };
 
-    const generateImageRequest = () => ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: { parts: [imagePart, { text: prompt }] },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            material: {
-              type: Type.STRING,
-              description: 'Specific name of the primary waste material visible (e.g. "PET plastic bottles", "corrugated cardboard")',
-            },
-            category: {
-              type: Type.STRING,
-              description: 'Primary category: plastic | paper | cardboard | metal | glass | organic | textile | e_waste | hazardous | medical | mixed | other | unknown',
-            },
-            material_type: {
-              type: Type.STRING,
-              description: 'Specific material sub-type (e.g. "PET #1", "HMS Ferrous Steel")',
-            },
-            confidence: {
-              type: Type.NUMBER,
-              description: 'Classification confidence 0.00–1.00',
-            },
-            estimated_weight: {
-              type: Type.NUMBER,
-              description: 'Estimated weight in kg for single identifiable items. Omit or null for large piles.',
-            },
-            weight_range_kg: {
-              type: Type.STRING,
-              description: 'Human-readable weight range (e.g. "0.02–0.05 kg") or "Requires verification at pickup"',
-            },
-            recyclable: {
-              type: Type.BOOLEAN,
-            },
-            recyclability_status: {
-              type: Type.STRING,
-              description: 'One of: Highly Recyclable | Recyclable | Conditionally Recyclable | Special Disposal Required | Not Recyclable | Requires Separation',
-            },
-            best_for: {
-              type: Type.STRING,
-            },
-            estimated_value: {
-              type: Type.NUMBER,
-              description: 'Estimated resale value in ₹. Null if unknown.',
-            },
-            value_text: {
-              type: Type.STRING,
-            },
-            current_rate_per_kg: {
-              type: Type.NUMBER,
-              description: 'Current scrap mandi rate in ₹/kg. Null if mixed or unknown.',
-            },
-            disposal_instruction: {
-              type: Type.STRING,
-            },
-            detected_items: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'List of specific items identified in the image',
-            },
-            visible_materials: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'List of distinct material types visible (e.g. ["plastic"] or ["plastic","metal"])',
-            },
-            requires_verification: {
-              type: Type.BOOLEAN,
-            },
-            reason: {
-              type: Type.STRING,
-              description: 'Required if is_unidentifiable is true. Explain why classification failed.',
-            },
-            is_unidentifiable: {
-              type: Type.BOOLEAN,
-              description: 'Set true only if image is unclear, too dark, blurry, or cannot be reliably classified',
-            },
+    const generateImageRequest = () => generateContentWithModelFallback(ai, [imagePart, { text: prompt }], {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          material: {
+            type: Type.STRING,
+            description: 'Specific name of the primary waste material visible (e.g. "PET plastic bottles", "corrugated cardboard")',
           },
-          required: [
-            'material',
-            'category',
-            'confidence',
-            'recyclable',
-            'disposal_instruction',
-            'detected_items',
-            'visible_materials',
-          ],
+          category: {
+            type: Type.STRING,
+            description: 'Primary category: plastic | paper | cardboard | metal | glass | organic | textile | e_waste | hazardous | medical | mixed | other | unknown',
+          },
+          material_type: {
+            type: Type.STRING,
+            description: 'Specific material sub-type (e.g. "PET #1", "HMS Ferrous Steel")',
+          },
+          confidence: {
+            type: Type.NUMBER,
+            description: 'Classification confidence 0.00–1.00',
+          },
+          estimated_weight: {
+            type: Type.NUMBER,
+            description: 'Estimated weight in kg for single identifiable items. Omit or null for large piles.',
+          },
+          weight_range_kg: {
+            type: Type.STRING,
+            description: 'Human-readable weight range (e.g. "0.02–0.05 kg") or "Requires verification at pickup"',
+          },
+          recyclable: {
+            type: Type.BOOLEAN,
+          },
+          recyclability_status: {
+            type: Type.STRING,
+            description: 'One of: Highly Recyclable | Recyclable | Conditionally Recyclable | Special Disposal Required | Not Recyclable | Requires Separation',
+          },
+          best_for: {
+            type: Type.STRING,
+          },
+          estimated_value: {
+            type: Type.NUMBER,
+            description: 'Estimated resale value in ₹. Null if unknown.',
+          },
+          value_text: {
+            type: Type.STRING,
+          },
+          current_rate_per_kg: {
+            type: Type.NUMBER,
+            description: 'Current scrap mandi rate in ₹/kg. Null if mixed or unknown.',
+          },
+          disposal_instruction: {
+            type: Type.STRING,
+          },
+          detected_items: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: 'List of specific items identified in the image',
+          },
+          visible_materials: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: 'List of distinct material types visible (e.g. ["plastic"] or ["plastic","metal"])',
+          },
+          requires_verification: {
+            type: Type.BOOLEAN,
+          },
+          reason: {
+            type: Type.STRING,
+            description: 'Required if is_unidentifiable is true. Explain why classification failed.',
+          },
+          is_unidentifiable: {
+            type: Type.BOOLEAN,
+            description: 'Set true only if image is unclear, too dark, blurry, or cannot be reliably classified',
+          },
         },
+        required: [
+          'material',
+          'category',
+          'confidence',
+          'recyclable',
+          'disposal_instruction',
+          'detected_items',
+          'visible_materials',
+        ],
       },
     });
 
@@ -657,33 +691,29 @@ Respond strictly in the JSON schema provided.`;
       is_unidentifiable: false,
     };
   } catch (error) {
-    // Re-throw typed errors as-is so server.ts can map them to HTTP codes.
-    if (
-      error instanceof GeminiTimeoutError ||
-      error instanceof GeminiUnavailableError ||
-      error instanceof GeminiInvalidResponseError ||
-      error instanceof GeminiLowConfidenceResult
-    ) {
+    if (error instanceof GeminiLowConfidenceResult) {
       throw error;
     }
 
-    // Translate raw Gemini SDK errors to typed errors.
-    const { status } = getGeminiErrorDetails(error);
-    console.error('[Gemini] Vision identification error:', { status, model: 'gemini-3.6-flash' });
+    const { status, text } = getGeminiErrorDetails(error);
+    console.error('[EcoScan AI] Gemini Vision API Error:', {
+      status,
+      message: (error as Error)?.message || text,
+    });
+
+    if (isGeminiAuthenticationError(error)) {
+      throw new GeminiUnavailableError('AI authentication failed. Please verify that a valid GEMINI_API_KEY is set in your .env file.');
+    }
 
     if (isGeminiModelNotFoundError(error)) {
-      throw new GeminiUnavailableError(
-        'Gemini model not found (HTTP 404). The model name may be invalid or unavailable in your region.'
-      );
+      throw new GeminiUnavailableError('Gemini AI Vision model is currently unavailable (404). Please try again in a moment or verify your API key access.');
     }
+
     if (isGeminiTemporaryError(error)) {
       throw new GeminiUnavailableError(localizedTemporaryMessage(responseLanguage));
     }
-    if (isGeminiAuthenticationError(error)) {
-      throw new GeminiUnavailableError('AI authentication failed. Please check the API key configuration.');
-    }
 
-    throw new GeminiInvalidResponseError((error as Error)?.message);
+    throw new GeminiInvalidResponseError((error as Error)?.message || 'AI analysis failed. Please try again.');
   }
 }
 
@@ -744,12 +774,8 @@ CRITICAL BEHAVIORAL DIRECTIVES:
     }
 
     const response = await withGeminiRetries(() =>
-      ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: contents,
-        config: {
-          systemInstruction: systemPrompt,
-        },
+      generateContentWithModelFallback(ai, contents, {
+        systemInstruction: systemPrompt,
       }),
       responseLanguage
     );

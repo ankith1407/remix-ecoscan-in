@@ -40,7 +40,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
       const userId = userProfile?.id || 'usr_aditi';
       const userPoints = userProfile?.points || 0;
 
-      const [rewardsData, partnersData, redemptionsData, ledgerData] = await Promise.all([
+      const [rewardsData, partnersData, redemptionsData, walletSummary] = await Promise.all([
         api
           .getRewards(selectedCategory === 'all' || selectedCategory === 'claimed' ? undefined : selectedCategory)
           .catch((err) => {
@@ -55,21 +55,21 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
           console.warn('[RewardsScreen] getRedemptions API call warning:', err);
           return [];
         }),
-        api.getCreditLedger(userId).catch((err) => {
-          console.warn('[RewardsScreen] getCreditLedger API call warning:', err);
-          return { ledger_balance: userPoints, transactions: [] };
+        api.getWalletSummary().catch((err) => {
+          console.warn('[RewardsScreen] getWalletSummary API call warning:', err);
+          return { ecoCredits: userPoints, recentTransactions: [], activeVouchers: [] };
         }),
       ]);
 
       const validRewards = Array.isArray(rewardsData) ? rewardsData : [];
       const validPartners = Array.isArray(partnersData) ? partnersData : [];
-      const validRedemptions = Array.isArray(redemptionsData) ? redemptionsData : [];
+      const validRedemptions = Array.isArray(redemptionsData) ? redemptionsData : walletSummary.activeVouchers || [];
 
       setDbRewards(validRewards);
       setDbPartners(validPartners);
       setClaimedRedemptions(validRedemptions);
-      setLedgerBalance(ledgerData?.ledger_balance ?? userPoints);
-      setCreditHistory(Array.isArray(ledgerData?.transactions) ? ledgerData.transactions : []);
+      setLedgerBalance(walletSummary?.ecoCredits ?? userPoints);
+      setCreditHistory(Array.isArray(walletSummary?.recentTransactions) ? walletSummary.recentTransactions : []);
     } catch (err: any) {
       console.error('[RewardsScreen] Error fetching rewards ecosystem data:', err);
       setError(err?.message || 'Unable to load rewards.');
@@ -144,7 +144,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
 
       onDeductPoints(reward.credits_required, `Redeemed ${reward.partner_name} (${reward.discount_value || reward.reward_value})`);
       setUnlockedRedemption(res.redemption);
-      setLedgerBalance(res.remaining_credits);
+      setLedgerBalance(res.remaining_credits ?? Math.max(0, effectivePoints - reward.credits_required));
       loadRewardsAndPartners();
     } catch (err: any) {
       alert(err.message || 'Redemption failed. Eco credits have been safely returned.');
@@ -160,20 +160,24 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
   };
 
   return (
-    <div className="flex flex-col w-full max-w-lg mx-auto px-4 gap-4 pt-2 pb-24 text-[#172019]">
+    <div className="flex flex-col w-full max-w-5xl mx-auto px-4 sm:px-6 gap-6 pt-2 pb-24 text-[#12352A]">
       {/* 1. Rewards Balance & Sovereign Credit Header */}
-      <div className="rounded-2xl bg-[#FFFFFF] p-5 shadow-xs border border-[#DCE5DE] relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-36 h-36 bg-[#E8F3EB] rounded-full blur-3xl pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col gap-2">
+      <div className="rounded-3xl bg-gradient-to-r from-[#043324] via-[#0B5138] to-[#16A765] p-6 text-white shadow-md relative overflow-hidden border border-[#D8EADF]/20">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-[#45C96B]/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="relative z-10 flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="badge-artistic">Green Sovereign Credits</div>
-            <div className="flex items-center gap-1">
-              <span className="font-editorial italic text-xs text-[#174D35] font-bold">Verified Eco Partners</span>
+            <div className="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 backdrop-blur-md text-[#E8F8EE] border border-white/20">
+              Green Sovereign Credits
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-editorial italic text-xs text-[#E8F8EE] font-bold">
+                Verified Eco Partners
+              </span>
               {onOpenPartnerDashboard && (
                 <button
                   type="button"
                   onClick={onOpenPartnerDashboard}
-                  className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-[#E8F3EB] text-[#174D35] hover:bg-[#3FA66B] hover:text-[#FFFFFF] border border-[#DCE5DE] transition-all"
+                  className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-white/15 text-white hover:bg-white/25 border border-white/20 transition-all backdrop-blur-sm"
                 >
                   Partner Portal
                 </button>
@@ -181,39 +185,39 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
             </div>
           </div>
 
-          <h1 className="font-editorial italic text-3xl font-bold text-[#172019] tracking-tight mt-1">
+          <h1 className="font-editorial italic text-3xl sm:text-4xl font-bold text-white tracking-tight mt-1">
             Eco Rewards & Vouchers
           </h1>
-          <p className="text-xs text-[#65736A] leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#E8F8EE]/80 leading-relaxed max-w-2xl">
             Redeem your verified waste segregation and doorstep pickup credits for authentic partner vouchers, food discounts, student passes, and eco-friendly products!
           </p>
 
           {/* User Credits Card */}
-          <div className="mt-3 p-4 rounded-xl bg-[#E8F3EB] border border-[#DCE5DE] flex items-center justify-between">
+          <div className="mt-2 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
-              <span className="text-[10px] uppercase tracking-widest text-[#174D35] font-bold">
+              <span className="text-[10px] uppercase tracking-widest text-[#E8F8EE]/80 font-bold">
                 Available Eco Balance
               </span>
-              <div className="font-editorial text-3xl font-bold text-[#172019] mt-0.5 flex items-baseline gap-1.5">
+              <div className="font-editorial text-3xl font-bold text-white mt-0.5 flex items-baseline gap-1.5">
                 {effectivePoints}
-                <span className="font-sans text-xs font-semibold text-[#3FA66B]">{t('ecoCredits')}</span>
+                <span className="font-sans text-xs font-semibold text-[#45C96B]">{t('ecoCredits')}</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
               <button
                 onClick={() => setShowHistoryModal(true)}
-                className="h-9 px-3 rounded-full bg-[#FFFFFF] text-[#172019] border border-[#DCE5DE] font-bold text-xs hover:bg-[#F5F8F4] active:scale-95 transition-all flex items-center gap-1 shadow-2xs"
+                className="h-9 px-3.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 font-bold text-xs active:scale-95 transition-all flex items-center gap-1.5 shadow-sm backdrop-blur-sm"
                 type="button"
                 title="View Credit History"
               >
-                <span className="material-symbols-outlined text-[17px] text-[#3FA66B]">history</span>
+                <span className="material-symbols-outlined text-[17px] text-[#45C96B]">history</span>
                 <span>{t('recent')}</span>
               </button>
 
               <button
                 onClick={onOpenCertificate}
-                className="h-9 px-3.5 rounded-full bg-[#3FA66B] text-[#FFFFFF] font-bold text-xs hover:bg-[#174D35] active:scale-95 transition-all flex items-center gap-1.5 shadow-xs"
+                className="h-9 px-4 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-white font-bold text-xs active:scale-95 transition-all flex items-center gap-1.5 shadow-sm border border-white/20"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[17px]">workspace_premium</span>
@@ -225,17 +229,17 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
       </div>
 
       {/* 2. Partner Category Tabs Horizontal Scroll */}
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1 -mx-4 px-4">
+      <div className="p-1.5 bg-[#F3FBF6] rounded-2xl border border-[#D8EADF] flex items-center gap-1.5 overflow-x-auto scrollbar-none">
         {categories.map((cat) => {
           const isActive = selectedCategory === cat.id;
           return (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
                 isActive
-                  ? 'bg-[#3FA66B] text-[#FFFFFF] shadow-xs font-bold'
-                  : 'bg-[#FFFFFF] text-[#172019] hover:bg-[#E8F3EB] border border-[#DCE5DE]'
+                  ? 'bg-[#16A765] text-[#FFFFFF] shadow-sm font-bold border border-[#16A765]'
+                  : 'bg-[#FFFFFF] text-[#60766C] hover:bg-[#E8F8EE] hover:text-[#12352A] border border-[#D8EADF]'
               }`}
               type="button"
             >
@@ -250,23 +254,23 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
       {selectedCategory === 'claimed' && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs uppercase tracking-widest text-[#174D35] font-bold">
+            <h2 className="text-xs uppercase tracking-widest text-[#12352A] font-bold">
               My Redeemed Vouchers ({safeClaimedRedemptions.length})
             </h2>
           </div>
 
           {safeClaimedRedemptions.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center justify-center text-center gap-2">
-              <div className="w-12 h-12 rounded-full bg-[#E8F3EB] border border-[#DCE5DE] flex items-center justify-center text-[#3FA66B]">
+            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] shadow-sm flex flex-col items-center justify-center text-center gap-2">
+              <div className="w-12 h-12 rounded-full bg-[#E8F8EE] border border-[#D8EADF] flex items-center justify-center text-[#16A765]">
                 <span className="material-symbols-outlined text-[24px]">receipt_long</span>
               </div>
-              <h3 className="text-sm font-bold text-[#172019]">{t('available')}</h3>
-              <p className="text-xs text-[#65736A] max-w-xs">
+              <h3 className="text-sm font-bold text-[#12352A]">{t('available')}</h3>
+              <p className="text-xs text-[#60766C] max-w-xs">
                 You haven&apos;t redeemed any vouchers yet. Complete doorstep waste pickups to earn Eco Credits and redeem partner vouchers!
               </p>
               <button
                 onClick={() => setSelectedCategory('all')}
-                className="mt-2 px-4 py-2 rounded-xl bg-[#3FA66B] text-[#FFFFFF] text-xs font-bold"
+                className="mt-2 px-4 py-2 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all shadow-sm"
                 type="button"
               >
                 Browse Available Rewards
@@ -276,36 +280,36 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
             safeClaimedRedemptions.map((claim) => (
               <div
                 key={claim.id}
-                className="rounded-2xl bg-[#FFFFFF] p-4 border border-[#DCE5DE] shadow-xs flex flex-col gap-3"
+                className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#D8EADF] shadow-sm flex flex-col gap-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#174D35]">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#16A765]">
                       {claim.partner_name || 'Eco Partner'} • {claim.discount_value || 'Voucher'}
                     </span>
-                    <h4 className="text-sm font-bold text-[#172019] mt-0.5">{claim.reward_title || 'Partner Reward'}</h4>
-                    <span className="text-[11px] text-[#65736A]">Claimed on {claim.redemption_date || claim.redeemed_at || 'Recently'}</span>
+                    <h4 className="text-sm font-bold text-[#12352A] mt-0.5">{claim.reward_title || 'Partner Reward'}</h4>
+                    <span className="text-[11px] text-[#60766C]">Claimed on {claim.redemption_date || claim.redeemed_at || 'Recently'}</span>
                   </div>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                     claim.redemption_status === 'USED' || claim.status === 'USED'
-                      ? 'bg-[#F5F8F4] text-[#65736A] border-[#DCE5DE]'
-                      : 'bg-[#E8F3EB] text-[#174D35] border-[#DCE5DE]'
+                      ? 'bg-[#F3FBF6] text-[#60766C] border-[#D8EADF]'
+                      : 'bg-[#E8F8EE] text-[#087A4B] border-[#D8EADF]'
                   }`}>
                     {claim.redemption_status === 'USED' || claim.status === 'USED' ? 'Redeemed On-Spot' : 'Active Voucher'}
                   </span>
                 </div>
 
                 {/* Voucher Code Box */}
-                <div className="p-3 rounded-xl bg-[#F5F8F4] border border-[#DCE5DE] flex items-center justify-between">
+                <div className="p-3.5 rounded-xl bg-[#F3FBF6] border border-[#D8EADF] flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-[9px] uppercase tracking-wider text-[#65736A]">Voucher Code</span>
-                    <span className="font-mono text-base font-bold text-[#3FA66B] tracking-wider select-all">
+                    <span className="text-[9px] uppercase tracking-wider text-[#60766C]">Voucher Code</span>
+                    <span className="font-mono text-base font-bold text-[#16A765] tracking-wider select-all">
                       {claim.voucher_code || claim.redemption_code}
                     </span>
                   </div>
                   <button
                     onClick={() => handleCopyCode(claim.voucher_code || claim.redemption_code || '')}
-                    className="px-3 py-1.5 rounded-lg bg-[#3FA66B] text-[#FFFFFF] text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+                    className="px-3.5 py-1.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold flex items-center gap-1 active:scale-95 transition-all shadow-xs"
                     type="button"
                   >
                     <span className="material-symbols-outlined text-[15px]">content_copy</span>
@@ -313,8 +317,8 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                   </button>
                 </div>
 
-                <div className="text-[11px] text-[#65736A] bg-[#F5F8F4] p-2.5 rounded-lg border border-[#DCE5DE]">
-                  <strong className="text-[#172019]">How to use:</strong> {claim.redemption_instructions || claim.how_to_redeem || 'Present this code at partner checkout.'}
+                <div className="text-[11px] text-[#60766C] bg-[#F3FBF6] p-3 rounded-xl border border-[#D8EADF]">
+                  <strong className="text-[#12352A]">How to use:</strong> {claim.redemption_instructions || claim.how_to_redeem || 'Present this code at partner checkout.'}
                 </div>
               </div>
             ))
@@ -326,44 +330,44 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
       {selectedCategory !== 'claimed' && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs uppercase tracking-widest text-[#174D35] font-bold">
+            <h2 className="text-xs uppercase tracking-widest text-[#12352A] font-bold">
               Available Partner Rewards ({filteredRewards.length})
             </h2>
-            <span className="text-[11px] text-[#65736A]">Instant Verified Delivery</span>
+            <span className="text-[11px] text-[#60766C]">Instant Verified Delivery</span>
           </div>
 
           {loading ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-2 text-xs text-[#65736A]">
-              <span className="w-6 h-6 border-2 border-[#3FA66B] border-t-transparent rounded-full animate-spin"></span>
-                <span>{t('ecoCredits')}...</span>
+            <div className="py-12 flex flex-col items-center justify-center gap-2 text-xs text-[#60766C]">
+              <span className="w-6 h-6 border-2 border-[#16A765] border-t-transparent rounded-full animate-spin"></span>
+              <span>{t('ecoCredits')}...</span>
             </div>
           ) : error ? (
-            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center justify-center text-center gap-3 shadow-xs">
+            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col items-center justify-center text-center gap-3 shadow-sm">
               <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
                 <span className="material-symbols-outlined text-[24px]">error_outline</span>
               </div>
-              <h3 className="text-sm font-bold text-[#172019]">Unable to load rewards.</h3>
-              <p className="text-xs text-[#65736A] max-w-xs">{error}</p>
+              <h3 className="text-sm font-bold text-[#12352A]">Unable to load rewards.</h3>
+              <p className="text-xs text-[#60766C] max-w-xs">{error}</p>
               <button
                 onClick={loadRewardsAndPartners}
-                className="mt-2 px-4 py-2 rounded-xl bg-[#3FA66B] text-[#FFFFFF] text-xs font-bold hover:bg-[#174D35] transition-colors"
+                className="mt-2 px-4 py-2 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold transition-all shadow-sm"
                 type="button"
               >
                 Try Again
               </button>
             </div>
           ) : filteredRewards.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center justify-center text-center gap-3 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-[#E8F3EB] border border-[#DCE5DE] flex items-center justify-center text-[#3FA66B]">
+            <div className="p-8 rounded-2xl bg-[#FFFFFF] border border-[#D8EADF] flex flex-col items-center justify-center text-center gap-3 shadow-sm">
+              <div className="w-12 h-12 rounded-full bg-[#E8F8EE] border border-[#D8EADF] flex items-center justify-center text-[#16A765]">
                 <span className="material-symbols-outlined text-[24px]">verified</span>
               </div>
-              <h3 className="text-sm font-bold text-[#172019]">No rewards available right now.</h3>
-              <p className="text-xs text-[#65736A] max-w-xs leading-relaxed">
+              <h3 className="text-sm font-bold text-[#12352A]">No rewards available right now.</h3>
+              <p className="text-xs text-[#60766C] max-w-xs leading-relaxed">
                 We are actively onboarding genuine verified EcoScan sustainability partners! Check back soon or earn more Eco Credits.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-1 gap-3.5">
               {filteredRewards.map((reward) => {
                 const canAfford = effectivePoints >= reward.credits_required;
                 const partnerObj = safeDbPartners.find((p) => p.id === reward.partner_id);
@@ -371,31 +375,31 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                 return (
                   <div
                     key={reward.id}
-                    className="rounded-2xl bg-[#FFFFFF] p-4 border border-[#DCE5DE] shadow-xs flex flex-col gap-3 hover:border-[#3FA66B]/50 transition-all relative overflow-hidden"
+                    className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#D8EADF] shadow-sm flex flex-col gap-3.5 hover:border-[#16A765]/50 transition-all relative overflow-hidden"
                   >
                     {/* Top Partner Badge & Sponsored Tag */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[16px] text-[#3FA66B]">
+                        <span className="material-symbols-outlined text-[16px] text-[#16A765]">
                           verified
                         </span>
-                        <span className="text-xs font-bold text-[#172019]">
+                        <span className="text-xs font-bold text-[#12352A]">
                           {reward.partner_name || 'EcoScan Partner'}
                         </span>
                         {partnerObj?.city_availability && (
-                          <span className="text-[9px] font-bold text-[#174D35] bg-[#E8F3EB] px-1.5 py-0.2 rounded border border-[#DCE5DE]">
+                          <span className="text-[9px] font-bold text-[#087A4B] bg-[#E8F8EE] px-2 py-0.5 rounded-md border border-[#D8EADF]">
                             {partnerObj.city_availability}
                           </span>
                         )}
                       </div>
 
                       <span
-                        className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                        className={`text-[9px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${
                           reward.sponsored_type === 'sponsored'
                             ? 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
                             : reward.sponsored_type === 'partner'
-                            ? 'bg-[#E8F3EB] text-[#174D35] border-[#DCE5DE]'
-                            : 'bg-[#F5F8F4] text-[#65736A] border-[#DCE5DE]'
+                            ? 'bg-[#E8F8EE] text-[#087A4B] border-[#D8EADF]'
+                            : 'bg-[#F3FBF6] text-[#60766C] border-[#D8EADF]'
                         }`}
                       >
                         {reward.sponsored_type === 'sponsored'
@@ -410,32 +414,32 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-[#E8F3EB] text-[#174D35] border border-[#DCE5DE]">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-[#E8F8EE] text-[#087A4B] border border-[#D8EADF]">
                             {reward.discount_value || 'Voucher'}
                           </span>
-                          <span className="text-[10px] text-[#65736A] uppercase font-semibold">
+                          <span className="text-[10px] text-[#60766C] uppercase font-semibold">
                             {(reward.voucher_type || 'discount').replace('_', ' ')}
                           </span>
                         </div>
-                        <h3 className="text-sm font-bold text-[#172019] mt-1 line-clamp-1">
+                        <h3 className="text-sm font-bold text-[#12352A] mt-1 line-clamp-1">
                           {reward.title}
                         </h3>
-                        <p className="text-xs text-[#65736A] mt-1 line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-[#60766C] mt-1 line-clamp-2 leading-relaxed">
                           {reward.description}
                         </p>
                       </div>
 
                       <div className="flex flex-col items-end shrink-0 pl-1">
-                        <span className="font-editorial text-xl font-bold text-[#3FA66B]">
+                        <span className="font-editorial text-xl font-bold text-[#16A765]">
                           {reward.credits_required}
                         </span>
-                        <span className="text-[10px] text-[#65736A] -mt-1">Eco Credits</span>
+                        <span className="text-[10px] text-[#60766C] -mt-1">Eco Credits</span>
                       </div>
                     </div>
 
                     {/* Terms & Action Footer */}
-                    <div className="pt-2 border-t border-[#DCE5DE] flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-[#65736A] truncate flex-1">
+                    <div className="pt-3 border-t border-[#D8EADF] flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-[#60766C] truncate flex-1">
                         {reward.terms || 'Standard terms apply.'}
                       </span>
 
@@ -443,8 +447,8 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                         onClick={() => handleRedeemClick(reward)}
                         className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shrink-0 ${
                           canAfford
-                            ? 'bg-[#3FA66B] text-[#FFFFFF] hover:bg-[#174D35] shadow-xs'
-                            : 'bg-[#FFFFFF] text-[#65736A] border border-[#DCE5DE] hover:text-[#172019]'
+                            ? 'bg-[#16A765] text-[#FFFFFF] hover:bg-[#087A4B] shadow-sm'
+                            : 'bg-[#F3FBF6] text-[#60766C] border border-[#D8EADF] hover:bg-[#E8F8EE] hover:text-[#12352A]'
                         }`}
                         type="button"
                       >
@@ -464,14 +468,14 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
 
       {/* 5. CONFIRMATION / REDEEM POPUP MODAL */}
       {activeRewardModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#172019]/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl bg-[#FFFFFF] border border-[#DCE5DE] p-6 shadow-xl flex flex-col gap-4 relative text-[#172019]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#043324]/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-3xl bg-[#FFFFFF] border border-[#D8EADF] p-6 shadow-xl flex flex-col gap-4 relative text-[#12352A]">
             <button
               onClick={() => {
                 setActiveRewardModal(null);
                 setUnlockedRedemption(null);
               }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#FFFFFF] border border-[#DCE5DE] flex items-center justify-center text-[#65736A] hover:text-[#172019]"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#F3FBF6] border border-[#D8EADF] flex items-center justify-center text-[#60766C] hover:text-[#12352A] hover:bg-[#E8F8EE]"
               type="button"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>
@@ -480,44 +484,44 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
             {!unlockedRedemption ? (
               <>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-[#E8F3EB] border border-[#3FA66B] flex items-center justify-center text-[#3FA66B]">
+                  <div className="w-12 h-12 rounded-2xl bg-[#E8F8EE] border border-[#D8EADF] flex items-center justify-center text-[#16A765]">
                     <span className="material-symbols-outlined text-[28px]">redeem</span>
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#174D35]">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#087A4B]">
                       Confirm Partner Offer Claim
                     </span>
-                    <h3 className="text-base font-bold text-[#172019]">
+                    <h3 className="text-base font-bold text-[#12352A]">
                       {activeRewardModal.partner_name} ({activeRewardModal.discount_value})
                     </h3>
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-[#F5F8F4] border border-[#DCE5DE] flex flex-col gap-2">
+                <div className="p-4 rounded-2xl bg-[#F3FBF6] border border-[#D8EADF] flex flex-col gap-2.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-[#65736A]">Voucher credit cost:</span>
-                    <span className="font-bold text-[#3FA66B]">{activeRewardModal.credits_required} Eco Credits</span>
+                    <span className="text-[#60766C]">Voucher credit cost:</span>
+                    <span className="font-bold text-[#16A765]">{activeRewardModal.credits_required} Eco Credits</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-[#65736A]">Current Eco Balance:</span>
-                    <span className="font-bold text-[#172019]">{effectivePoints} Eco Credits</span>
+                    <span className="text-[#60766C]">Current Eco Balance:</span>
+                    <span className="font-bold text-[#12352A]">{effectivePoints} Eco Credits</span>
                   </div>
-                  <div className="flex justify-between items-center text-xs pt-1 border-t border-[#DCE5DE]">
-                    <span className="text-[#65736A]">Balance after redemption:</span>
-                    <span className="font-bold text-[#172019]">
+                  <div className="flex justify-between items-center text-xs pt-2 border-t border-[#D8EADF]">
+                    <span className="text-[#60766C]">Balance after redemption:</span>
+                    <span className="font-bold text-[#12352A]">
                       {Math.max(0, effectivePoints - activeRewardModal.credits_required)} Eco Credits
                     </span>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-[#65736A] leading-relaxed">
+                <p className="text-[11px] text-[#60766C] leading-relaxed">
                   {activeRewardModal.terms}
                 </p>
 
                 <div className="flex items-center gap-2 pt-2">
                   <button
                     onClick={() => setActiveRewardModal(null)}
-                    className="flex-1 py-2.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F5F8F4] text-[#172019] text-xs font-semibold border border-[#DCE5DE]"
+                    className="flex-1 py-2.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F3FBF6] text-[#12352A] text-xs font-semibold border border-[#D8EADF]"
                     type="button"
                   >
                     Cancel
@@ -525,7 +529,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                   <button
                     disabled={redeeming}
                     onClick={() => handleConfirmRedeem(activeRewardModal)}
-                    className="flex-1 py-2.5 rounded-xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-all disabled:opacity-50"
+                    className="flex-1 py-2.5 rounded-xl bg-[#16A765] hover:bg-[#087A4B] text-[#FFFFFF] text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50"
                     type="button"
                   >
                     <span className="material-symbols-outlined text-[17px]">celebration</span>
@@ -536,29 +540,29 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
             ) : (
               <>
                 <div className="flex flex-col items-center text-center gap-2">
-                  <div className="w-14 h-14 rounded-full bg-[#E8F3EB] border border-[#3FA66B] flex items-center justify-center text-[#3FA66B]">
+                  <div className="w-14 h-14 rounded-full bg-[#E8F8EE] border border-[#16A765]/30 flex items-center justify-center text-[#16A765]">
                     <span className="material-symbols-outlined text-[32px]">check_circle</span>
                   </div>
-                  <h3 className="text-lg font-bold text-[#172019]">Voucher Unlocked! 🎉</h3>
-                  <p className="text-xs text-[#65736A]">
+                  <h3 className="text-lg font-bold text-[#12352A]">Voucher Unlocked! 🎉</h3>
+                  <p className="text-xs text-[#60766C]">
                     Here is your exclusive {unlockedRedemption.partner_name || 'partner'} digital voucher code:
                   </p>
                 </div>
 
                 {/* Code display with copy */}
-                <div className="p-4 rounded-2xl bg-[#E8F3EB] border-2 border-dashed border-[#3FA66B]/70 flex flex-col items-center gap-2.5">
-                  <span className="text-[10px] uppercase tracking-widest text-[#174D35] font-bold">
+                <div className="p-5 rounded-2xl bg-[#E8F8EE] border-2 border-dashed border-[#16A765]/60 flex flex-col items-center gap-3">
+                  <span className="text-[10px] uppercase tracking-widest text-[#087A4B] font-bold">
                     YOUR REDEMPTION CODE
                   </span>
-                  <span className="font-mono text-xl font-extrabold text-[#172019] tracking-wider select-all">
+                  <span className="font-mono text-2xl font-extrabold text-[#12352A] tracking-wider select-all">
                     {unlockedRedemption.redemption_code || unlockedRedemption.voucher_code}
                   </span>
                   <button
                     onClick={() => handleCopyCode(unlockedRedemption.redemption_code || unlockedRedemption.voucher_code || '')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all ${
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm ${
                       copiedCode
-                        ? 'bg-[#16A34A] text-[#FFFFFF]'
-                        : 'bg-[#3FA66B] text-[#FFFFFF]'
+                        ? 'bg-[#087A4B] text-[#FFFFFF]'
+                        : 'bg-[#16A765] text-[#FFFFFF] hover:bg-[#087A4B]'
                     }`}
                     type="button"
                   >
@@ -569,8 +573,8 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                   </button>
                 </div>
 
-                <div className="text-[11px] text-[#65736A] bg-[#F5F8F4] p-3 rounded-xl border border-[#DCE5DE]">
-                  <strong className="text-[#172019]">How to redeem:</strong>
+                <div className="text-[11px] text-[#60766C] bg-[#F3FBF6] p-3.5 rounded-2xl border border-[#D8EADF]">
+                  <strong className="text-[#12352A]">How to redeem:</strong>
                   <p className="mt-1">{unlockedRedemption.how_to_redeem || unlockedRedemption.redemption_instructions || 'Present code at partner checkout.'}</p>
                 </div>
 
@@ -580,7 +584,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
                     setUnlockedRedemption(null);
                     setSelectedCategory('claimed');
                   }}
-                  className="w-full py-2.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F5F8F4] text-[#172019] text-xs font-bold border border-[#DCE5DE]"
+                  className="w-full py-2.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F3FBF6] text-[#12352A] text-xs font-bold border border-[#D8EADF]"
                   type="button"
                 >
                   View in My Claimed Vouchers
@@ -593,38 +597,38 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
 
       {/* 6. CREDIT AUDIT HISTORY MODAL ("Where did I earn/spend?") */}
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#172019]/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-3xl bg-[#FFFFFF] border border-[#DCE5DE] p-6 shadow-xl flex flex-col gap-4 relative max-h-[85vh] overflow-y-auto text-[#172019]">
-            <div className="flex items-center justify-between pb-2 border-b border-[#DCE5DE]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#043324]/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-[#FFFFFF] border border-[#D8EADF] p-6 shadow-xl flex flex-col gap-4 relative max-h-[85vh] overflow-y-auto text-[#12352A]">
+            <div className="flex items-center justify-between pb-2 border-b border-[#D8EADF]">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#3FA66B] text-[22px]">history</span>
-                <h3 className="text-base font-bold text-[#172019]">Eco Credit Audit Log</h3>
+                <span className="material-symbols-outlined text-[#16A765] text-[22px]">history</span>
+                <h3 className="text-base font-bold text-[#12352A]">Eco Credit Audit Log</h3>
               </div>
               <button
                 onClick={() => setShowHistoryModal(false)}
-                className="w-8 h-8 rounded-full bg-[#F5F8F4] border border-[#DCE5DE] flex items-center justify-center text-[#65736A] hover:text-[#172019]"
+                className="w-8 h-8 rounded-full bg-[#F3FBF6] border border-[#D8EADF] flex items-center justify-center text-[#60766C] hover:text-[#12352A] hover:bg-[#E8F8EE]"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
 
-            <p className="text-xs text-[#65736A]">
+            <p className="text-xs text-[#60766C]">
               Transparent record of all Eco Credits earned from verified scrap recycling and spent on partner rewards:
             </p>
 
             <div className="flex flex-col gap-2">
               {safeCreditHistory.length === 0 ? (
-                <div className="p-4 text-center text-xs text-[#65736A]">No transactions recorded yet</div>
+                <div className="p-4 text-center text-xs text-[#60766C]">No transactions recorded yet</div>
               ) : (
                 safeCreditHistory.map((tx) => (
                   <div
                     key={tx.id}
-                    className="p-3 rounded-xl bg-[#F5F8F4] border border-[#DCE5DE] flex items-center justify-between"
+                    className="p-3.5 rounded-2xl bg-[#F3FBF6] border border-[#D8EADF] flex items-center justify-between"
                   >
                     <div className="flex flex-col">
-                      <span className="text-xs font-bold text-[#172019]">{tx.source}</span>
-                      <span className="text-[10px] text-[#65736A]">
+                      <span className="text-xs font-bold text-[#12352A]">{tx.source}</span>
+                      <span className="text-[10px] text-[#60766C]">
                         {tx.created_at ? new Date(tx.created_at).toLocaleString('en-IN', {
                           day: 'numeric',
                           month: 'short',
@@ -637,7 +641,7 @@ export const RewardsScreen: React.FC<RewardsScreenProps> = ({
 
                     <span
                       className={`font-editorial text-base font-bold ${
-                        tx.type === 'EARNED' ? 'text-[#3FA66B]' : 'text-[#DC2626]'
+                        tx.type === 'EARNED' ? 'text-[#16A765]' : 'text-[#DC2626]'
                       }`}
                     >
                       {tx.type === 'EARNED' ? `+${tx.credits}` : `-${tx.credits}`}

@@ -113,6 +113,8 @@ export interface ScheduledPickup {
   partnerName: string;
   partnerVehicle?: string;
   partnerRating?: string;
+  partnerImage?: string;
+  collectorImage?: string;
   pickupsCount?: string;
   phone?: string;
   otp: string;
@@ -187,6 +189,10 @@ export interface DbCollectorItem {
   rating: number;
   total_pickups: number;
   total_earnings: number;
+  profile_image?: string;
+  avatar_url?: string;
+  vehicle_info?: string;
+  badge_title?: string;
 }
 
 export type PickupStatus =

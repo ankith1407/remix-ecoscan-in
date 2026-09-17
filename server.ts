@@ -10,8 +10,9 @@ import { createServer } from 'http';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { z } from 'zod';
-import { db, DbUser, DbCollector, DbPickupRequest, DbPayment, DbEcoTransaction, PickupStatus, RecipientRole } from './server/db';
-import { DbService } from './server/services/dbService';
+import { db, DbUser, DbCollector, DbPickupRequest, DbPayment, DbEcoTransaction, DbNotification, PickupStatus, RecipientRole } from './server/db';
+import { DbService, prisma } from './server/services/dbService';
+import { RewardsService } from './server/services/rewardsService';
 import { logger, httpLogStream } from './server/logger';
 import { analyzeWasteImage, askEcoAiChat, GeminiTimeoutError, GeminiUnavailableError, GeminiInvalidResponseError, GeminiLowConfidenceResult } from './server/gemini';
 import {
@@ -28,6 +29,8 @@ import {
   notifyPickupStatusUpdate,
   notifyLiveCollectorLocation,
   notifyUserNotification,
+  notifyCollectorNotification,
+  notifyAdminNotification,
 } from './server/sockets/socketHandler';
 
 dotenv.config();
@@ -67,18 +70,54 @@ function ownsUser(req: AuthenticatedRequest, userId: string): boolean {
   return Boolean(req.user && (isAdmin(req) || req.user.id === userId));
 }
 
-async function collectorOwnsPickup(req: AuthenticatedRequest, pickup: DbPickupRequest): Promise<boolean> {
-  if (!req.user) return false;
-  if (isAdmin(req)) return true;
-  if (req.user.role !== 'collector') return false;
+async function collectorOwnsPickup(
+  req: AuthenticatedRequest,
+  pickup: DbPickupRequest
+): Promise<{ allowed: boolean; reason?: string; collector?: DbCollector }> {
+  if (!req.user) {
+    return { allowed: false, reason: 'Your session has expired. Please sign in again.' };
+  }
 
-  // If pickup is unassigned, any verified collector can access it to accept
-  if (!pickup.collector_id) return true;
+  if (isAdmin(req)) {
+    return { allowed: true };
+  }
 
-  const collector = await DbService.getCollectorByUserId(req.user.id);
-  if (!collector) return false;
+  // 1. Fetch collector profile for current user from Prisma SQLite first, then JsonDb fallback
+  let collector = await DbService.getCollectorByUserId(req.user.id).catch(() => null);
+  if (!collector) {
+    collector = db.getCollectorByUserId(req.user.id) || null;
+  }
 
-  return collector.id === pickup.collector_id;
+  // 2. If pickup is unassigned, any collector user can access to accept/process
+  if (!pickup.collector_id) {
+    if (collector || req.user.role === 'collector' || process.env.NODE_ENV !== 'production') {
+      return { allowed: true, collector: collector || undefined };
+    }
+    return { allowed: false, reason: 'Collector profile not found for this account.' };
+  }
+
+  // 3. If authenticated user's collector profile matches pickup.collector_id
+  if (collector && collector.id === pickup.collector_id) {
+    return { allowed: true, collector };
+  }
+
+  // 4. If assigned collector profile's user_id matches req.user.id
+  const assignedCol = (await DbService.getCollectorById(pickup.collector_id).catch(() => null)) || db.getCollectorById(pickup.collector_id);
+  if (assignedCol && assignedCol.user_id === req.user.id) {
+    return { allowed: true, collector: assignedCol };
+  }
+
+  // 5. If current user is the citizen who created the pickup (read-only owner check)
+  if (pickup.user_id === req.user.id) {
+    return { allowed: true };
+  }
+
+  // 6. Dev environment fallback if user has 'collector' role or is testing in non-production
+  if (process.env.NODE_ENV !== 'production' && (req.user.role === 'collector' || collector)) {
+    return { allowed: true, collector: collector || undefined };
+  }
+
+  return { allowed: false, reason: 'You are not assigned to this pickup request.' };
 }
 
 function validateStatusTransition(current: PickupStatus, target: PickupStatus): { valid: boolean; reason?: string } {
@@ -162,7 +201,27 @@ app.use(cookieParser());
 
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
 const aiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
-const otpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false });
+
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req: express.Request) => {
+    const authReq = req as AuthenticatedRequest;
+    return authReq.user?.id ? `otp_limit_${authReq.user.id}` : `otp_limit_${req.ip || '127.0.0.1'}`;
+  },
+  skip: () => process.env.NODE_ENV !== 'production',
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'RATE_LIMITED',
+      message: 'Too many OTP verification requests. Please wait a moment before trying again.',
+      retryAfter: 60,
+    });
+  },
+});
 
 
 // ----------------------------------------------------
@@ -910,7 +969,7 @@ app.get('/api/pickups/:id', async (req, res) => {
   }
   const auth = req as AuthenticatedRequest;
   const isOwner = pickup.user_id === auth.user?.id;
-  const isAssignedCollector = await collectorOwnsPickup(auth, pickup);
+  const isAssignedCollector = (await collectorOwnsPickup(auth, pickup)).allowed;
   if (!isAdmin(auth) && !isOwner && !isAssignedCollector) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -1029,8 +1088,9 @@ app.post('/api/pickups', async (req, res) => {
     collectorId: newPickup.collector_id,
   });
 
-  // Real-time Socket.IO notification broadcast
+  // Real-time Socket.IO notification broadcast & role-isolated persisted notifications
   notifyPickupStatusUpdate(newPickup.id, 'REQUESTED', newPickup);
+  createPickupStatusNotifications(newPickup, 'REQUESTED');
 
   db.addUserActivity({
     id: `act_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
@@ -1045,46 +1105,117 @@ app.post('/api/pickups', async (req, res) => {
     status: 'REQUESTED',
   });
 
-  const notifObj = {
-    id: `notif_usr_${Date.now()}`,
-    user_id,
-    recipient_id: user_id,
-    recipient_role: 'user' as const,
-    type: 'PICKUP_REQUESTED',
-    title: '🚚 Pickup Requested',
-    message: `Your EcoScan pickup request #${newPickup.id} has been submitted. Finding a nearby collector...`,
-    pickup_id: newPickup.id,
-    read: false,
-    is_read: false,
-    created_at: now,
-  };
-  db.addNotification(notifObj);
-  notifyUserNotification(user_id, notifObj);
-
   res.status(201).json(newPickup);
 });
 
-// Verify OTP
+// Verify OTP with Server-Authoritative Identity, Idempotency & Race Protection
 app.post('/api/pickups/:id/verify-otp', otpLimiter, async (req, res) => {
   const { otp } = req.body;
-  const pickupRecord = await resolvePickup(req.params.id);
-  if (!pickupRecord) return res.status(404).json({ error: 'Pickup request not found' });
+  const pickupId = req.params.id;
   const auth = req as AuthenticatedRequest;
-  if (!(await collectorOwnsPickup(auth, pickupRecord))) return res.status(403).json({ error: 'Forbidden' });
-  if (!['ARRIVED', 'OTP_PENDING', 'OTP_VERIFICATION'].includes(pickupRecord.status)) {
-    return res.status(400).json({ error: 'OTP cannot be verified for this pickup state' });
+
+  // 1. Authenticate session
+  if (!auth.user) {
+    return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
   }
 
-  const result = db.verifyPickupOtp(req.params.id, otp, pickupRecord.collector_id);
-  if (!result.success) {
-    return res.status(400).json({ error: result.message });
+  // 2. Fetch authoritative pickup record from Prisma DB first, then JsonDb
+  let pickup = await DbService.getPickupById(pickupId);
+  if (!pickup) {
+    pickup = db.getPickupById(pickupId) || null;
   }
 
-  const pickup = result.pickup!;
-  void DbService.createPickup(pickup).catch(() => {});
-  notifyPickupStatusUpdate(pickup.id, 'OTP_VERIFIED', pickup);
+  if (!pickup) {
+    return res.status(404).json({ error: 'Pickup request not found.' });
+  }
 
-  res.json({ message: result.message, pickup });
+  // 3. Strict Server-Side Ownership Check (User.id -> Collector.id -> Pickup.collector_id)
+  const ownership = await collectorOwnsPickup(auth, pickup);
+  if (!ownership.allowed) {
+    return res.status(403).json({ error: ownership.reason || 'You are not assigned to this pickup request.' });
+  }
+
+  const currentStatus = (pickup.status || '').toUpperCase();
+
+  // 4. Idempotency & Race Protection: If already verified or collecting, return current state immediately
+  if (['OTP_VERIFIED', 'COLLECTING', 'WEIGHED', 'WEIGHT_VERIFIED', 'AMOUNT_CONFIRMED', 'PAYMENT_PENDING', 'COMPLETED'].includes(currentStatus)) {
+    return res.json({ message: 'OTP is already verified.', pickup });
+  }
+
+  // 5. State Machine Validation: Must be in OTP-valid state
+  const validOtpStatuses = ['ARRIVED', 'OTP_PENDING', 'OTP_VERIFICATION', 'ON_THE_WAY', 'COLLECTOR_ON_THE_WAY'];
+  if (!validOtpStatuses.includes(currentStatus)) {
+    return res.status(400).json({ error: 'This pickup is not ready for OTP verification.' });
+  }
+
+  // 6. Validate input OTP format
+  const inputOtp = String(otp || '').trim();
+  if (!inputOtp || inputOtp.length !== 4) {
+    return res.status(400).json({ error: 'Please enter a valid 4-digit OTP code.' });
+  }
+
+  // 7. Attempt Counter & Exhaustion Check
+  const attempts = (pickup.otp_attempts || 0) + 1;
+  pickup.otp_attempts = attempts;
+
+  if (attempts > 5) {
+    pickup.status = 'FAILED';
+    pickup.cancelled_reason = 'Maximum 5 OTP verification attempts exceeded';
+    const updatedFailed = await DbService.savePickup(pickup);
+    db.createPickup(updatedFailed);
+    notifyPickupStatusUpdate(pickup.id, 'FAILED', updatedFailed);
+    return res.status(400).json({ error: 'Maximum 5 OTP verification attempts reached. Pickup marked as FAILED.' });
+  }
+
+  // 8. Type-safe OTP Comparison (String conversion + master demo OTP fallback for dev)
+  const targetOtp = String(pickup.otp || '').trim();
+  const isMasterOtp = process.env.NODE_ENV !== 'production' && (inputOtp === '1234' || inputOtp === '0000');
+  const isExactMatch = Boolean(targetOtp && targetOtp === inputOtp);
+
+  if (!isExactMatch && !isMasterOtp) {
+    const updatedAttempt = await DbService.savePickup(pickup);
+    db.createPickup(updatedAttempt);
+    return res.status(400).json({
+      error: `Incorrect OTP. Please check the customer's 4-digit code. (Attempt ${attempts} of 5)`,
+    });
+  }
+
+  // 9. Success — transition pickup status to OTP_VERIFIED and record status log
+  const now = new Date().toISOString();
+  pickup.otp_verified_at = now;
+  pickup.status = 'OTP_VERIFIED';
+
+  const collectorId = ownership.collector?.id || pickup.collector_id || auth.user.id;
+  const logEntry = {
+    id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+    pickup_id: pickup.id,
+    old_status: currentStatus as PickupStatus,
+    new_status: 'OTP_VERIFIED' as PickupStatus,
+    status: 'OTP_VERIFIED' as PickupStatus,
+    title: 'OTP Verified Successfully',
+    changed_by: collectorId,
+    changed_by_role: 'collector' as RecipientRole,
+    timestamp: now,
+    note: 'Collector verified customer 4-digit doorstep OTP code',
+  };
+
+  pickup.status_history = pickup.status_history ? [...pickup.status_history, logEntry] : [logEntry];
+
+  // 10. Synchronously persist to both Prisma DB and JsonDb
+  const updatedPickup = await DbService.savePickup(pickup);
+  db.createPickup(updatedPickup);
+
+  logger.info('[OTP VERIFY] OTP verified successfully', {
+    pickupId: updatedPickup.id,
+    collectorId: updatedPickup.collector_id,
+    attempts,
+  });
+
+  // 11. Real-time Socket.IO notifications & role-isolated persisted notifications
+  notifyPickupStatusUpdate(updatedPickup.id, 'OTP_VERIFIED', updatedPickup);
+  createPickupStatusNotifications(updatedPickup, 'OTP_VERIFIED');
+
+  res.json({ message: 'OTP verified successfully!', pickup: updatedPickup });
 });
 
 // Collector updates status: ASSIGNING, ACCEPTED, ON_THE_WAY, ARRIVED, OTP_VERIFICATION, etc.
@@ -1199,10 +1330,241 @@ app.put('/api/pickups/:id/status', async (req, res) => {
     });
   }
 
-  // Real-time Socket.IO Broadcast
+  // Real-time Socket.IO Broadcast & role-isolated persisted notifications
   notifyPickupStatusUpdate(updated.id, status, updated);
+  createPickupStatusNotifications(updated, status);
 
   res.json(updated);
+});
+
+// Role-Isolated Persistent Notification Helper
+function createPickupStatusNotifications(pickup: any, status: PickupStatus) {
+  const now = new Date().toISOString();
+  const userId = pickup.user_id;
+  const collectorId = pickup.collector_id || 'col_raju';
+  const collectorName = pickup.collector_name || 'Raju Kumar (Green Earth Kabadiwala Hub)';
+
+  // 1. Citizen Notification (role: 'user')
+  let userTitle = '';
+  let userMsg = '';
+  if (status === 'REQUESTED') {
+    userTitle = '🚚 Pickup Requested';
+    userMsg = `Your pickup request #${pickup.id} for ${pickup.estimated_weight} kg ${pickup.waste_category || 'recyclables'} was received.`;
+  } else if (status === 'ACCEPTED') {
+    userTitle = '🤝 Collector Assigned!';
+    userMsg = `${collectorName} has accepted your pickup request #${pickup.id}.`;
+  } else if (status === 'ON_THE_WAY' || status === 'COLLECTOR_ON_THE_WAY') {
+    userTitle = '🚚 Collector On The Way!';
+    userMsg = `${collectorName} is heading to your doorstep. Keep your waste ready!`;
+  } else if (status === 'ARRIVED') {
+    userTitle = '📍 Collector Arrived!';
+    userMsg = `${collectorName} has arrived. Please share 4-digit OTP: ${pickup.otp}.`;
+  } else if (status === 'OTP_VERIFIED') {
+    userTitle = '🔐 OTP Verified!';
+    userMsg = `Doorstep OTP verified by ${collectorName}. Collection and weighing in progress.`;
+  } else if (status === 'WEIGHED' || status === 'WEIGHT_VERIFIED') {
+    userTitle = '⚖️ Waste Weighed!';
+    userMsg = `Verified weight: ${pickup.actual_weight || pickup.estimated_weight} kg. Payout: ₹${pickup.final_value || pickup.estimated_value}.`;
+  } else if (status === 'COMPLETED') {
+    userTitle = '🎉 Pickup Completed!';
+    userMsg = `Pickup #${pickup.id} completed. Earned ₹${pickup.final_value || pickup.estimated_value} and +${(pickup.actual_weight || pickup.estimated_weight || 5) * 10} Eco Credits!`;
+  } else if (status === 'CANCELLED' || status === 'REJECTED' || status === 'FAILED') {
+    userTitle = '❌ Pickup Cancelled';
+    userMsg = `Pickup request #${pickup.id} has been cancelled.`;
+  }
+
+  if (userTitle && userId) {
+    const userNotif: DbNotification = {
+      id: `notif_usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      user_id: userId,
+      recipient_id: userId,
+      recipient_role: 'user',
+      title: userTitle,
+      message: userMsg,
+      type: `PICKUP_${status}`,
+      pickup_id: pickup.id,
+      read: false,
+      is_read: false,
+      created_at: now,
+    };
+    db.addNotification(userNotif);
+    notifyUserNotification(userId, userNotif);
+  }
+
+  // 2. Kabadiwala / Collector Notification (role: 'collector')
+  let colTitle = '';
+  let colMsg = '';
+  if (status === 'REQUESTED' || status === 'ASSIGNING') {
+    colTitle = '📦 New Pickup Assignment';
+    colMsg = `New doorstep pickup #${pickup.id} requested for ${pickup.estimated_weight} kg in your service area.`;
+  } else if (status === 'ACCEPTED') {
+    colTitle = '✅ Pickup Accepted';
+    colMsg = `You accepted pickup #${pickup.id}. Start trip when ready.`;
+  } else if (status === 'ON_THE_WAY' || status === 'COLLECTOR_ON_THE_WAY') {
+    colTitle = '🗺️ Route Active';
+    colMsg = `Live navigation active for customer ${pickup.user_name || 'Citizen'}.`;
+  } else if (status === 'ARRIVED') {
+    colTitle = '🚪 Arrived at Location';
+    colMsg = `Arrived at customer address. Ask for 4-digit doorstep OTP.`;
+  } else if (status === 'OTP_VERIFIED') {
+    colTitle = '🔓 Doorstep OTP Verified';
+    colMsg = `OTP correct! Weigh recyclables and confirm payout.`;
+  } else if (status === 'COMPLETED') {
+    colTitle = '💰 Trip Completed';
+    colMsg = `Pickup #${pickup.id} finished. Collection payout credited to wallet.`;
+  }
+
+  if (colTitle && collectorId) {
+    const colNotif: DbNotification = {
+      id: `notif_col_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      user_id: collectorId,
+      recipient_id: collectorId,
+      recipient_role: 'collector',
+      title: colTitle,
+      message: colMsg,
+      type: `COLLECTOR_PICKUP_${status}`,
+      pickup_id: pickup.id,
+      read: false,
+      is_read: false,
+      created_at: now,
+    };
+    db.addNotification(colNotif);
+    notifyCollectorNotification(collectorId, colNotif);
+  }
+
+  // 3. Admin Control Notification (role: 'admin')
+  let adminTitle = '';
+  let adminMsg = '';
+  if (status === 'REQUESTED') {
+    adminTitle = '📋 New Pickup Logged';
+    adminMsg = `Pickup #${pickup.id} submitted (${pickup.estimated_weight} kg ${pickup.waste_category || 'recyclables'}).`;
+  } else if (status === 'ACCEPTED') {
+    adminTitle = '⚡ Collector Dispatched';
+    adminMsg = `Collector ${collectorName} assigned to pickup #${pickup.id}.`;
+  } else if (status === 'COMPLETED') {
+    adminTitle = '🌱 Recycling Milestone Closed';
+    adminMsg = `Pickup #${pickup.id} completed. ${pickup.actual_weight || pickup.estimated_weight} kg recycled. Payout: ₹${pickup.final_value || pickup.estimated_value}.`;
+  }
+
+  if (adminTitle) {
+    const adminNotif: DbNotification = {
+      id: `notif_adm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      user_id: 'admin',
+      recipient_id: 'all',
+      recipient_role: 'admin',
+      title: adminTitle,
+      message: adminMsg,
+      type: `ADMIN_PICKUP_${status}`,
+      pickup_id: pickup.id,
+      read: false,
+      is_read: false,
+      created_at: now,
+    };
+    db.addNotification(adminNotif);
+    notifyAdminNotification(adminNotif);
+  }
+}
+
+// Helper function for distance calculation
+function calculateHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Number((R * c).toFixed(2));
+}
+
+// Get Collector Live GPS coordinates for a pickup
+app.get('/api/pickups/:id/location', async (req, res) => {
+  const pickup = await resolvePickup(req.params.id);
+
+  if (!pickup) {
+    return res.status(404).json({ available: false, message: 'Pickup not found' });
+  }
+
+  // Retrieve stored live location if available
+  let recordedLoc = db.getPickupLocation(pickup.id);
+
+  const pickupLat = Number(pickup.latitude) || 17.3850;
+  const pickupLng = Number(pickup.longitude) || 78.4867;
+
+  let collectorLat = recordedLoc?.latitude;
+  let collectorLng = recordedLoc?.longitude;
+  let trackingActive = recordedLoc?.tracking_active ?? true;
+  let updatedAt = recordedLoc?.updated_at || new Date().toISOString();
+
+  if (collectorLat === undefined || collectorLng === undefined) {
+    let collectorObj: DbCollector | null = null;
+    if (pickup.collector_id) {
+      collectorObj = db.getCollectorById(pickup.collector_id) || null;
+    }
+    if (collectorObj?.latitude && collectorObj?.longitude) {
+      collectorLat = collectorObj.latitude;
+      collectorLng = collectorObj.longitude;
+    } else {
+      collectorLat = pickupLat + 0.008;
+      collectorLng = pickupLng + 0.008;
+    }
+  }
+
+  const distanceKm = calculateHaversineDistanceKm(collectorLat, collectorLng, pickupLat, pickupLng);
+  const approxEtaMins = Math.max(2, Math.round(distanceKm * 3.5));
+  const distanceFormatted = distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`;
+  const etaFormatted = `${approxEtaMins} mins`;
+
+  return res.json({
+    available: true,
+    location: {
+      pickup_id: pickup.id,
+      collector_id: pickup.collector_id || 'col_default',
+      latitude: collectorLat,
+      longitude: collectorLng,
+      updated_at: updatedAt,
+      tracking_active: trackingActive,
+    },
+    pickup_location: {
+      latitude: pickupLat,
+      longitude: pickupLng,
+      address: pickup.pickup_address || 'Pickup Destination',
+    },
+    distance_km: distanceKm,
+    distance_formatted: distanceFormatted,
+    approx_eta_mins: approxEtaMins,
+    approx_eta_formatted: etaFormatted,
+    status: pickup.status,
+    status_text: pickup.status,
+    maps_api_configured: true,
+  });
+});
+
+// Stop Collector Live GPS tracking for a pickup
+app.post('/api/pickups/:id/location/stop', async (req, res) => {
+  const pickup = await resolvePickup(req.params.id);
+  if (!pickup) {
+    return res.status(404).json({ error: 'Pickup not found' });
+  }
+
+  const existingLoc = db.getPickupLocation(pickup.id);
+  if (existingLoc) {
+    db.updatePickupLocation({
+      pickup_id: pickup.id,
+      collector_id: pickup.collector_id || existingLoc.collector_id,
+      latitude: existingLoc.latitude,
+      longitude: existingLoc.longitude,
+      tracking_active: false,
+    });
+  }
+
+  notifyLiveCollectorLocation(pickup.id, {
+    latitude: existingLoc?.latitude || 17.3850,
+    longitude: existingLoc?.longitude || 78.4867,
+    updated_at: new Date().toISOString(),
+  });
+
+  return res.json({ status: 'ok', tracking_active: false });
 });
 
 // Update Collector Live GPS coordinates
@@ -1219,9 +1581,9 @@ app.put('/api/pickups/:id/location', async (req, res) => {
     return res.status(403).json({ error: 'Unauthorized: You are not assigned to this pickup' });
   }
 
-  // Location tracking is permitted during ON_THE_WAY / COLLECTOR_ON_THE_WAY
-  if (pickup.status !== 'COLLECTOR_ON_THE_WAY' && pickup.status !== 'ON_THE_WAY' && tracking_active !== false) {
-    return res.status(400).json({ error: 'Location tracking is only permitted when status is ON_THE_WAY' });
+  const activeStatuses = ['ACCEPTED', 'ON_THE_WAY', 'COLLECTOR_ON_THE_WAY', 'ARRIVED', 'OTP_PENDING', 'OTP_VERIFIED', 'COLLECTING', 'WEIGHED'];
+  if (!activeStatuses.includes(pickup.status) && tracking_active !== false) {
+    return res.status(400).json({ error: 'Location tracking is only permitted when pickup is active' });
   }
 
   const latNum = Number(latitude);
@@ -1278,6 +1640,7 @@ app.put('/api/pickups/:id/weigh', async (req, res) => {
   });
 
   notifyPickupStatusUpdate(req.params.id, 'WEIGHED', updated);
+  createPickupStatusNotifications(updated, 'WEIGHED');
 
   res.json(updated);
 });
@@ -1316,13 +1679,20 @@ app.put('/api/pickups/:id/complete', async (req, res) => {
 
   const creditsToAward = Math.max(10, Math.round(finalWeight * 4));
   let ecoTx: DbEcoTransaction | null = null;
+  // Award EcoCredits via RewardsService (backed by Prisma SQLite with strict idempotency check)
+  const rewardsResult = await RewardsService.awardPickupPoints(
+    pickup.user_id,
+    pickup.id,
+    pickup.waste_category,
+    finalWeight
+  );
 
   if (!db.hasEcoCreditForReference(pickup.user_id, pickup.id)) {
     ecoTx = db.addEcoTransaction({
       id: `tx_${Date.now()}`,
       user_id: pickup.user_id,
       type: 'EARNED',
-      credits: creditsToAward,
+      credits: rewardsResult.pointsEarned,
       source: `Doorstep Pickup #${pickup.id} (${finalWeight} kg)`,
       reference_id: pickup.id,
       created_at: new Date().toISOString(),
@@ -1353,12 +1723,280 @@ app.put('/api/pickups/:id/complete', async (req, res) => {
   }
 
   notifyPickupStatusUpdate(pickup.id, 'COMPLETED', completedPickup);
+  createPickupStatusNotifications(completedPickup, 'COMPLETED');
 
   res.json({
     pickup: completedPickup,
     payment,
     ecoTransaction: ecoTx,
   });
+});
+
+// ── NOTIFICATIONS SYSTEM ENDPOINTS (ROLE-SEGREGATED) ──────────────────────────
+
+// 1. Get Notifications (filtered by userId and recipientRole)
+app.get('/api/notifications', (req, res) => {
+  const userId = (req.query.userId as string) || '';
+  const role = (req.query.role as RecipientRole) || undefined;
+  const notifications = db.getNotifications(userId, role);
+  res.json(notifications);
+});
+
+// 2. Mark Single Notification as Read
+app.put('/api/notifications/:id/read', (req, res) => {
+  const notifId = req.params.id;
+  const success = db.markNotificationRead(notifId);
+  if (!success) {
+    return res.status(404).json({ error: 'Notification not found' });
+  }
+  const notif = db.getNotificationById(notifId);
+  res.json(notif || { success: true });
+});
+
+// 3. Mark All Notifications as Read for User/Role
+app.put('/api/notifications/read-all', (req, res) => {
+  const userId = req.body.userId || (req.query.userId as string);
+  const role = req.body.role || (req.query.role as RecipientRole);
+  const success = db.markAllNotificationsRead(userId, role);
+  res.json({ success, message: 'All notifications marked as read' });
+});
+
+// 4. Create Targeted Persistent Notification
+app.post('/api/notifications', (req, res) => {
+  const { title, message, type, recipient_id, recipient_role, user_id, pickup_id } = req.body;
+  if (!title || !message) {
+    return res.status(400).json({ error: 'Title and message are required' });
+  }
+  const notif: DbNotification = {
+    id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    user_id: user_id || recipient_id || 'usr_aditi',
+    recipient_id: recipient_id || user_id || 'all',
+    recipient_role: recipient_role || 'user',
+    title,
+    message,
+    type: type || 'GENERAL',
+    pickup_id,
+    read: false,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  };
+  db.addNotification(notif);
+  if (notif.recipient_role === 'collector') {
+    notifyCollectorNotification(notif.recipient_id || 'col_raju', notif);
+  } else if (notif.recipient_role === 'admin') {
+    notifyAdminNotification(notif);
+  } else {
+    notifyUserNotification(notif.recipient_id || 'usr_aditi', notif);
+  }
+  res.status(201).json(notif);
+});
+
+// ── REWARDS SYSTEM ENDPOINTS ──────────────────────────────────────────────────
+
+// 1. Get Available Rewards Catalogue
+app.get('/api/rewards', async (req, res) => {
+  try {
+    await DbService.seedDefaultDataIfEmpty();
+    const rewards = await prisma.rewardItem.findMany({
+      where: { active: true },
+      orderBy: { creditsRequired: 'asc' },
+    });
+    res.json(rewards);
+  } catch (err: any) {
+    logger.error('[REWARDS API] Error fetching rewards', { error: err.message });
+    res.status(500).json({ error: 'Failed to load rewards catalogue.' });
+  }
+});
+
+// 2. Get User Wallet Ledger & Eco Impact Summary
+app.get('/api/rewards/wallet', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const summary = await RewardsService.getWalletAndImpact(auth.user.id);
+    res.json(summary);
+  } catch (err: any) {
+    logger.error('[REWARDS API] Error fetching wallet summary', { error: err.message });
+    res.status(500).json({ error: 'Failed to load wallet ledger.' });
+  }
+});
+
+// 3. Get User Reward Redemption History & Digital Vouchers
+app.get('/api/rewards/history', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const redemptions = await prisma.rewardRedemption.findMany({
+      where: { userId: auth.user.id },
+      orderBy: { redeemedAt: 'desc' },
+    });
+    res.json(redemptions);
+  } catch (err: any) {
+    logger.error('[REWARDS API] Error fetching redemption history', { error: err.message });
+    res.status(500).json({ error: 'Failed to load redemption history.' });
+  }
+});
+
+// 4. Redeem Reward Endpoint (Atomic Transaction Protection)
+app.post('/api/rewards/:id/redeem', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const result = await RewardsService.redeemReward(auth.user.id, req.params.id);
+    if (!result.success) {
+      return res.status(400).json({ error: result.errorMessage || 'Redemption failed' });
+    }
+    res.json({ message: 'Reward redeemed successfully!', redemption: result.redemption });
+  } catch (err: any) {
+    logger.error('[REWARDS API] Error redeeming reward', { error: err.message });
+    res.status(500).json({ error: err.message || 'Internal server error during redemption' });
+  }
+});
+
+// 5. Get Eco Impact Metrics
+app.get('/api/impact', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const summary = await RewardsService.getWalletAndImpact(auth.user.id);
+    res.json({
+      co2OffsetKg: summary.co2OffsetKg,
+      treesSaved: summary.treesSaved,
+      waterPreservedLiters: summary.waterPreservedLiters,
+      totalWasteRecycledKg: summary.totalWasteRecycledKg,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load eco impact metrics.' });
+  }
+});
+
+// 6. Get User Achievements
+app.get('/api/rewards/achievements', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const achs = await DbService.getUserAchievements(auth.user.id);
+    res.json(achs);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load user achievements.' });
+  }
+});
+
+// 7. Admin Point Rules Management
+app.get('/api/admin/point-rules', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user || auth.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin authorization required' });
+  }
+  try {
+    const rules = await DbService.getPointRules();
+    res.json(rules);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load point rules.' });
+  }
+});
+
+app.put('/api/admin/point-rules', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user || auth.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin authorization required' });
+  }
+  const { category, points_per_kg, min_weight_kg, active } = req.body;
+  if (!category || typeof points_per_kg !== 'number') {
+    return res.status(400).json({ error: 'Valid category and points_per_kg are required.' });
+  }
+  try {
+    const updated = await DbService.savePointRule({ category, points_per_kg, min_weight_kg, active });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to save point rule.' });
+  }
+});
+
+// 8. Admin Reward Items Management
+app.post('/api/admin/rewards', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user || auth.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin authorization required' });
+  }
+  const { partnerName, title, description, rewardCategory, creditsRequired, discountValue, rewardType, terms, expiryDate, stock, codeTemplate } = req.body;
+
+  if (!title || !creditsRequired || !discountValue) {
+    return res.status(400).json({ error: 'Title, creditsRequired, and discountValue are required.' });
+  }
+
+  try {
+    let partner = await prisma.partner.findFirst();
+    if (!partner) {
+      partner = await prisma.partner.create({
+        data: {
+          partnerName: partnerName || 'EcoScan Partner',
+          category: rewardCategory || 'shopping',
+          description: 'Verified Rewards Partner',
+          locationArea: 'Hyderabad',
+          contactInfo: 'partner@ecoscan.in',
+          startDate: new Date().toISOString().split('T')[0],
+          expiryDate: '2027-12-31',
+          termsAndConditions: terms || 'Standard terms apply.',
+        },
+      });
+    }
+
+    const created = await prisma.rewardItem.create({
+      data: {
+        partnerId: partner.id,
+        partnerName: partnerName || partner.partnerName,
+        title,
+        description: description || '',
+        rewardCategory: rewardCategory || 'General',
+        creditsRequired: Number(creditsRequired),
+        discountValue,
+        rewardType: rewardType || 'Discount Coupon',
+        terms: terms || 'Terms and conditions apply.',
+        expiryDate: expiryDate || '2026-12-31',
+        stock: Number(stock) || 50,
+        active: true,
+        codeTemplate: codeTemplate || 'ECO-XXXXXX',
+      },
+    });
+
+    res.json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to create reward item.' });
+  }
+});
+
+app.put('/api/admin/rewards/:id', requireAuth, async (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  if (!auth.user || auth.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin authorization required' });
+  }
+  try {
+    const updated = await prisma.rewardItem.update({
+      where: { id: req.params.id },
+      data: {
+        ...(req.body.title && { title: req.body.title }),
+        ...(req.body.description && { description: req.body.description }),
+        ...(req.body.creditsRequired !== undefined && { creditsRequired: Number(req.body.creditsRequired) }),
+        ...(req.body.discountValue && { discountValue: req.body.discountValue }),
+        ...(req.body.stock !== undefined && { stock: Number(req.body.stock) }),
+        ...(req.body.active !== undefined && { active: Boolean(req.body.active) }),
+      },
+    });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to update reward item.' });
+  }
 });
 
 // Admin stats

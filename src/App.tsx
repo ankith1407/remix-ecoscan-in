@@ -27,6 +27,7 @@ import {
   FRESH_DAILY_QUEST,
 } from './data/mockData';
 import { api } from './services/api';
+import { getCollectorAvatarByName, CollectorAvatar } from './components/CollectorAvatar';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -233,7 +234,7 @@ export default function App() {
       if (authScreen !== 'authenticated') return;
       try {
         const [notifsData, activitiesData, remotePickups] = await Promise.all([
-          api.getNotifications(activeUserId).catch(() => []),
+          api.getNotifications(activeUserId, activeRole).catch(() => []),
           api.getUserActivities(activeUserId).catch(() => []),
           api.getPickups({ userId: activeUserId }).catch(() => []),
         ]);
@@ -261,9 +262,11 @@ export default function App() {
               status: (isCompleted ? 'completed' : isCancelled ? 'pending' : 'confirmed') as 'completed' | 'pending' | 'confirmed',
               statusText,
               dateTimeSlot: `${p.preferred_date || 'Today'} • ${p.preferred_time || '10:30 AM'}`,
-              partnerName: p.collector_name || 'Green Earth Kabadiwala Hub',
-              partnerVehicle: 'KA 03 EC 4821 (E-Loader)',
+              partnerName: p.collector_name || 'Raju Kumar (Green Earth Kabadiwala Hub)',
+              partnerVehicle: 'TS 09 EC 4821 (E-Loader Rickshaw)',
               partnerRating: '4.9 ★',
+              partnerImage: getCollectorAvatarByName(p.collector_name || 'Raju Kumar'),
+              collectorImage: getCollectorAvatarByName(p.collector_name || 'Raju Kumar'),
               pickupsCount: '340+ Pickups',
               phone: p.user_phone || '+91 98450 12345',
               otp: p.otp,
@@ -287,7 +290,7 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [activeUserId, authScreen, language, t]);
+  }, [activeUserId, activeRole, authScreen, language, t]);
 
   const handleMarkNotificationRead = async (notifId: string) => {
     try {
@@ -300,7 +303,7 @@ export default function App() {
 
   const handleMarkAllNotificationsRead = async () => {
     try {
-      await api.markAllNotificationsRead(activeUserId);
+      await api.markAllNotificationsRead(activeUserId, activeRole);
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read: true })));
     } catch (err) {
       console.warn('Failed to mark all notifications read:', err);
@@ -765,6 +768,7 @@ export default function App() {
       <NotificationCenterModal
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
+        activeRole={activeRole}
         notifications={notifications}
         onMarkRead={handleMarkNotificationRead}
         onMarkAllRead={handleMarkAllNotificationsRead}

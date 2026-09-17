@@ -1,5 +1,6 @@
 import React from 'react';
 import { DbPickupItem } from '../types';
+import { CollectorAvatar } from './CollectorAvatar';
 
 interface PickupReceiptModalProps {
   isOpen: boolean;
@@ -26,27 +27,27 @@ export const PickupReceiptModal: React.FC<PickupReceiptModalProps> = ({
   const ecoCredits = Math.max(10, Math.round(finalWeight * 4));
 
   return (
-    <div className="fixed inset-0 z-[70] bg-[#172019]/60 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#FFFFFF] rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-[#DCE5DE] flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 text-[#172019]">
+    <div className="fixed inset-0 z-[70] bg-[#12352A]/60 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-[#FFFFFF] rounded-3xl w-full max-w-md shadow-xl overflow-hidden border border-[#D8EADF] flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 text-[#12352A]">
         {/* Printable Area Header */}
-        <div className="bg-[#111111] text-[#FFFFFF] px-6 py-5 flex items-center justify-between border-b border-[#242824]">
+        <div className="bg-[#043324] text-[#FFFFFF] px-6 py-5 flex items-center justify-between border-b border-[#087A4B]/30">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[#3FA66B] flex items-center justify-center text-[#FFFFFF] font-bold">
+            <div className="w-10 h-10 rounded-xl bg-[#16A765] flex items-center justify-center text-[#FFFFFF] font-bold">
               <span className="material-symbols-outlined text-[24px]">receipt_long</span>
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-editorial italic font-bold text-lg text-[#FFFFFF]">EcoScan</span>
-                <span className="bg-[#3FA66B] text-[#FFFFFF] font-mono text-[9px] px-1.5 py-0.5 rounded font-bold">
+                <span className="bg-[#16A765] text-[#FFFFFF] font-mono text-[9px] px-1.5 py-0.5 rounded font-bold">
                   RECEIPT
                 </span>
               </div>
-              <p className="text-[11px] text-[#A0AEC0] font-mono">ID: {pickup.id}</p>
+              <p className="text-[11px] text-[#D8EADF] font-mono">ID: {pickup.id}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-[#242824] text-[#A0AEC0] hover:text-[#FFFFFF] flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full bg-white/10 text-white/80 hover:text-[#FFFFFF] hover:bg-white/20 flex items-center justify-center transition-colors"
             type="button"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
@@ -56,38 +57,45 @@ export const PickupReceiptModal: React.FC<PickupReceiptModalProps> = ({
         {/* Printable Receipt Body */}
         <div className="p-6 overflow-y-auto space-y-5 print:p-0">
           {/* Status Badge */}
-          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#E8F3EB] border border-[#3FA66B]/30">
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#E8F8EE] border border-[#D8EADF]">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#3FA66B] text-[22px]">check_circle</span>
+              <span className="material-symbols-outlined text-[#16A765] text-[22px]">check_circle</span>
               <div>
-                <span className="text-xs font-bold text-[#174D35] block">Pickup Completed ✓</span>
-                <span className="text-[10px] text-[#65736A]">
+                <span className="text-xs font-bold text-[#087A4B] block">Pickup Completed ✓</span>
+                <span className="text-[10px] text-[#60766C]">
                   Verified on {new Date(pickup.completed_at || pickup.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </span>
               </div>
             </div>
-            <span className="text-xs font-mono font-bold text-[#174D35] bg-[#FFFFFF] px-2.5 py-1 rounded-full border border-[#DCE5DE]">
+            <span className="text-xs font-mono font-bold text-[#087A4B] bg-[#FFFFFF] px-2.5 py-1 rounded-full border border-[#D8EADF]">
               +{ecoCredits} Pts
             </span>
           </div>
 
           {/* Details Metadata */}
-          <div className="grid grid-cols-2 gap-3 text-xs bg-[#F5F8F4] p-3.5 rounded-2xl border border-[#DCE5DE]">
+          <div className="grid grid-cols-2 gap-3 text-xs bg-[#F7FCF8] p-3.5 rounded-2xl border border-[#D8EADF]">
             <div>
-              <span className="text-[10px] uppercase font-bold text-[#65736A] block">Customer</span>
-              <span className="font-bold text-[#172019] block truncate">{pickup.user_name || 'Eco Citizen'}</span>
-              <span className="text-[10px] text-[#65736A]">{pickup.user_phone || '+91 98450 12345'}</span>
+              <span className="text-[10px] uppercase font-bold text-[#60766C] block">Customer</span>
+              <span className="font-bold text-[#12352A] block truncate">{pickup.user_name || 'Eco Citizen'}</span>
+              <span className="text-[10px] text-[#60766C]">{pickup.user_phone || '+91 98450 12345'}</span>
             </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold text-[#65736A] block">Collector Partner</span>
-              <span className="font-bold text-[#172019] block truncate">{pickup.collector_name || 'Green Earth Hub'}</span>
-              <span className="text-[10px] text-[#65736A]">{pickup.collector_vehicle || 'KA-03-EC-4821'}</span>
+            <div className="flex items-center gap-2">
+              <CollectorAvatar
+                name={pickup.collector_name || 'Raju Kumar (Green Earth Hub)'}
+                size="sm"
+                showVerifiedBadge={true}
+              />
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#60766C] block">Collector Partner</span>
+                <span className="font-bold text-[#12352A] block truncate">{pickup.collector_name || 'Raju Kumar (Green Earth Hub)'}</span>
+                <span className="text-[10px] text-[#60766C]">{pickup.collector_vehicle || 'TS-09-EC-4821'}</span>
+              </div>
             </div>
           </div>
 
           {/* Itemized Materials Table */}
-          <div className="border border-[#DCE5DE] rounded-2xl overflow-hidden">
-            <div className="bg-[#F5F8F4] px-4 py-2 text-[10px] uppercase font-bold text-[#65736A] grid grid-cols-12 border-b border-[#DCE5DE]">
+          <div className="border border-[#D8EADF] rounded-2xl overflow-hidden">
+            <div className="bg-[#F3FBF6] px-4 py-2 text-[10px] uppercase font-bold text-[#60766C] grid grid-cols-12 border-b border-[#D8EADF]">
               <span className="col-span-6">Material Item</span>
               <span className="col-span-2 text-right">Weight</span>
               <span className="col-span-2 text-right">Rate</span>
@@ -95,41 +103,41 @@ export const PickupReceiptModal: React.FC<PickupReceiptModalProps> = ({
             </div>
             <div className="p-4 space-y-2">
               <div className="grid grid-cols-12 text-xs items-center">
-                <span className="col-span-6 font-bold text-[#172019]">{pickup.waste_category}</span>
+                <span className="col-span-6 font-bold text-[#12352A]">{pickup.waste_category}</span>
                 <span className="col-span-2 text-right font-mono font-medium">{finalWeight} kg</span>
-                <span className="col-span-2 text-right font-mono text-[#65736A]">₹{unitRate}</span>
-                <span className="col-span-2 text-right font-mono font-bold text-[#172019]">₹{finalAmount}</span>
+                <span className="col-span-2 text-right font-mono text-[#60766C]">₹{unitRate}</span>
+                <span className="col-span-2 text-right font-mono font-bold text-[#12352A]">₹{finalAmount}</span>
               </div>
               {pickup.items_summary && pickup.items_summary !== pickup.waste_category && (
-                <p className="text-[11px] text-[#65736A] italic pt-1 border-t border-[#DCE5DE]">
+                <p className="text-[11px] text-[#60766C] italic pt-1 border-t border-[#D8EADF]">
                   Summary: {pickup.items_summary}
                 </p>
               )}
             </div>
 
             {/* Total Footer */}
-            <div className="bg-[#F5F8F4] p-3.5 border-t border-[#DCE5DE] flex items-center justify-between">
+            <div className="bg-[#F3FBF6] p-3.5 border-t border-[#D8EADF] flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase font-bold text-[#65736A]">Total Verified Weight</span>
-                <span className="text-sm font-bold text-[#172019]">{finalWeight} kg</span>
+                <span className="text-[10px] uppercase font-bold text-[#60766C]">Total Verified Weight</span>
+                <span className="text-sm font-bold text-[#12352A]">{finalWeight} kg</span>
               </div>
               <div className="flex flex-col items-end">
-                <span className="text-[10px] uppercase font-bold text-[#65736A]">Total Amount Paid</span>
-                <span className="text-base font-editorial font-bold text-[#3FA66B]">₹{finalAmount}</span>
+                <span className="text-[10px] uppercase font-bold text-[#60766C]">Total Amount Paid</span>
+                <span className="text-base font-editorial font-bold text-[#16A765]">₹{finalAmount}</span>
               </div>
             </div>
           </div>
 
           {/* Eco Credits & Environmental Impact */}
-          <div className="p-3.5 rounded-2xl bg-[#E8F3EB] border border-[#DCE5DE] flex items-center justify-between">
+          <div className="p-3.5 rounded-2xl bg-[#E8F8EE] border border-[#D8EADF] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#3FA66B] text-[20px]">eco</span>
+              <span className="material-symbols-outlined text-[#16A765] text-[20px]">eco</span>
               <div>
-                <span className="text-xs font-bold text-[#174D35] block">Eco Credits Awarded</span>
-                <span className="text-[10px] text-[#65736A]">Diverted {finalWeight} kg scrap from landfill</span>
+                <span className="text-xs font-bold text-[#087A4B] block">Eco Credits Awarded</span>
+                <span className="text-[10px] text-[#60766C]">Diverted {finalWeight} kg scrap from landfill</span>
               </div>
             </div>
-            <span className="text-sm font-bold text-[#174D35] font-mono">+{ecoCredits} Credits</span>
+            <span className="text-sm font-bold text-[#087A4B] font-mono">+{ecoCredits} Credits</span>
           </div>
 
           {/* Rating Section if available */}
@@ -139,7 +147,7 @@ export const PickupReceiptModal: React.FC<PickupReceiptModalProps> = ({
               <div className="flex items-center text-[#D97706] font-bold">
                 {'★'.repeat(pickup.rating)}
                 {'☆'.repeat(5 - pickup.rating)}
-                <span className="ml-1.5 text-xs text-[#172019]">({pickup.rating}.0)</span>
+                <span className="ml-1.5 text-xs text-[#12352A]">({pickup.rating}.0)</span>
               </div>
             </div>
           ) : onOpenRating ? (
@@ -158,11 +166,11 @@ export const PickupReceiptModal: React.FC<PickupReceiptModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-[#F5F8F4] border-t border-[#DCE5DE] grid grid-cols-2 gap-3 print:hidden">
+        <div className="p-4 bg-[#F7FCF8] border-t border-[#D8EADF] grid grid-cols-2 gap-3 print:hidden">
           <button
             onClick={handlePrint}
             type="button"
-            className="py-2.5 px-3 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] text-[#172019] font-bold text-xs hover:bg-[#E8F3EB] transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+            className="py-2.5 px-3 rounded-xl bg-[#FFFFFF] border border-[#D8EADF] text-[#12352A] font-bold text-xs hover:bg-[#E8F8EE] transition-colors flex items-center justify-center gap-1.5 shadow-xs"
           >
             <span className="material-symbols-outlined text-[16px]">print</span>
             Print Receipt
@@ -170,7 +178,7 @@ export const PickupReceiptModal: React.FC<PickupReceiptModalProps> = ({
           <button
             onClick={onClose}
             type="button"
-            className="py-2.5 px-3 rounded-xl bg-[#3FA66B] text-[#FFFFFF] font-bold text-xs hover:bg-[#174D35] transition-colors flex items-center justify-center gap-1 shadow-xs"
+            className="py-2.5 px-3 rounded-xl bg-[#16A765] text-[#FFFFFF] font-bold text-xs hover:bg-[#087A4B] transition-colors flex items-center justify-center gap-1 shadow-xs"
           >
             Close Receipt
           </button>

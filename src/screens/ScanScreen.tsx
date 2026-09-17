@@ -317,6 +317,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
   const sampleScrapPresets = [
     {
       label: 'Iron Rod Scrap',
+      labelKey: 'ironRodScrapLabel',
       icon: 'construction',
       name: 'Heavy Iron & TMT Construction Rod Scrap',
       confidence: '99.4%',
@@ -341,6 +342,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
     },
     {
       label: 'Cardboard Box',
+      labelKey: 'cardboardBoxLabel',
       icon: 'inventory_2',
       name: 'Corrugated Packaging Carton Box',
       confidence: '99.4%',
@@ -363,6 +365,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
     },
     {
       label: 'Kitchen Peel',
+      labelKey: 'kitchenPeelLabel',
       icon: 'compost',
       name: 'Organic Fruit & Vegetable Peel',
       confidence: '98.9%',
@@ -385,6 +388,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
     },
     {
       label: 'Copper & Wire',
+      labelKey: 'copperWireLabel',
       icon: 'cable',
       name: 'High-Purity Copper Wire Scrap',
       confidence: '97.6%',
@@ -416,11 +420,9 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
     { label: 'Kitchen Peel', name: 'Banana Peel & Fruit Pulp' },
   ];
 
-  // Clamp detectedItemIndex to valid bounds so demoDetections[clampedIndex] is NEVER undefined.
-  const clampedIndex = Math.max(0, Math.min(detectedItemIndex, demoDetections.length - 1));
-  // currentItem is ALWAYS defined: customDetectedItem (real AI result) OR the clamped demo entry.
-  // This prevents 'Cannot read properties of null (reading "name")' at every currentItem.* access.
-  const currentItem: DetectedItem = customDetectedItem ?? demoDetections[clampedIndex] ?? demoDetections[0];
+  // currentItem is customDetectedItem (real AI result or explicitly selected preset) or null.
+  // It MUST NOT default to demoDetections[0] ("Iron TMT Rod Scrap") when a scan is in progress or fails.
+  const currentItem: DetectedItem | null = customDetectedItem;
 
 
   // Stop camera helper
@@ -1059,7 +1061,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-5 max-w-2xl mx-auto pb-12">
+    <div className="flex flex-col gap-6 max-w-5xl mx-auto pb-16 pt-2">
       {/* Hidden File Inputs */}
       <input
         ref={fileInputRef}
@@ -1210,7 +1212,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
           )}
 
           {/* Low Confidence or Unidentifiable Alert */}
-          {!isAnalyzing && currentItem && (currentItem.isUnidentifiable || currentItem.confidenceNum < 0.45) && (
+          {!isAnalyzing && !analysisError && currentItem && (currentItem.isUnidentifiable || currentItem.confidenceNum < 0.45) && (
             <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FCA5A5] flex items-start gap-3 text-[#991B1B]">
               <span className="material-symbols-outlined text-[24px] text-[#DC2626] shrink-0">
                 warning
@@ -1232,7 +1234,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
           )}
 
           {/* AI-Confirmed Appraisal Results */}
-          {!isAnalyzing && currentItem && !currentItem.isUnidentifiable && currentItem.confidenceNum >= 0.45 && (
+          {!isAnalyzing && !analysisError && currentItem && !currentItem.isUnidentifiable && currentItem.confidenceNum >= 0.45 && (
             <>
               <div className="flex flex-col items-center text-center gap-1.5 mt-1">
                 <h2 className="font-editorial text-2xl font-bold text-[#172019] tracking-tight">
@@ -1398,14 +1400,93 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
         /* B. VIEWFINDER / LIVE CAMERA VIEW MODE */
         /* ---------------------------------------------------- */
         <>
+          {/* HERO BANNER: TURN WASTE INTO VALUE */}
+          <div className="relative w-full rounded-3xl bg-gradient-to-r from-[#043324] via-[#0B5138] to-[#16A765] p-5 sm:p-7 text-[#FFFFFF] shadow-xl overflow-hidden border border-[#16A765]/30">
+            {/* Background organic light glows */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-[#45C96B]/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-60 h-60 bg-[#063B2A]/40 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+              {/* Left Column: Title & Intro */}
+              <div className="flex-1 flex flex-col items-start text-left gap-2 max-w-md">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFFFF]/10 backdrop-blur-md border border-[#FFFFFF]/20 text-[10px] font-extrabold uppercase tracking-widest text-[#E9F8EF]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#45C96B] animate-pulse" />
+                  <span>SCAN • IDENTIFY • RECYCLE</span>
+                </div>
+
+                <h1 className="font-headline font-extrabold text-3xl sm:text-4xl tracking-tight leading-tight text-[#FFFFFF]">
+                  Turn Waste Into <span className="text-[#45C96B] underline decoration-[#45C96B]/40">Value</span>
+                </h1>
+
+                <p className="text-xs sm:text-sm text-[#E9F8EF]/90 leading-relaxed font-medium">
+                  Scan your waste items and get instant information about their value, recyclability and proper disposal method.
+                </p>
+
+                <div className="mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#FFFFFF]/15 backdrop-blur-md border border-[#FFFFFF]/25 text-xs font-serif italic text-[#E9F8EF]">
+                  <span>A cleaner tomorrow starts with you 🌱</span>
+                </div>
+              </div>
+
+              {/* Right Column: AI Status Speech Bubble Card & Quick Shutter Pill */}
+              <div className="flex-1 w-full flex flex-col items-center md:items-end gap-3">
+                <div className="w-full max-w-sm rounded-2xl bg-[#FFFFFF] p-4 text-[#12352A] shadow-lg border border-[#D8EADF] relative">
+                  <div className="flex items-center justify-between gap-2 border-b border-[#D8EADF] pb-2.5 mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#16A765] animate-pulse" />
+                      <span className="font-headline font-bold text-xs text-[#063B2A]">{t('readyToScanScrap')}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-[#E9F8EF] text-[#063B2A] text-[10px] font-bold border border-[#D8EADF] flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px] text-[#16A765]">auto_awesome</span>
+                      EcoScan AI
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-bold mb-2.5">
+                    <div className="flex items-center gap-1.5 p-2 rounded-xl bg-[#F4FBF6] border border-[#D8EADF] text-[#063B2A]">
+                      <span className="material-symbols-outlined text-[16px] text-[#16A765]">center_focus_strong</span>
+                      <span>{t('autoDetectionActive')}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 p-2 rounded-xl bg-[#F4FBF6] border border-[#D8EADF] text-[#063B2A]">
+                      <span className="material-symbols-outlined text-[16px] text-[#16A765]">payments</span>
+                      <span>{t('liveMandiRates')}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#5D7469] font-medium">
+                    <span className="material-symbols-outlined text-[14px] text-[#16A765]">eco</span>
+                    <span>{t('scanAnyItemAppraisal')}</span>
+                  </div>
+                </div>
+
+                {/* Attached Shutter CTA Pill */}
+                <button
+                  type="button"
+                  onClick={handleInstantShutter}
+                  className="w-full max-w-sm h-11 rounded-full bg-[#FFFFFF] hover:bg-[#F4FBF6] text-[#063B2A] border border-[#D8EADF] shadow-md px-4 flex items-center justify-between font-bold text-xs active:scale-95 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-[#16A765] text-[#FFFFFF] flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[16px]">photo_camera</span>
+                    </div>
+                    <span>{t('pointPhoneAtScrap')}</span>
+                  </div>
+                  <span className="material-symbols-outlined text-[18px] text-[#16A765] transition-transform group-hover:translate-x-1">
+                    chevron_right
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* MAIN CAMERA VIEWFINDER */}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`relative w-full h-84 sm:h-96 rounded-3xl overflow-hidden shadow-xl bg-[#172019] border-2 transition-all ${
+            className={`relative w-full h-84 sm:h-96 rounded-3xl overflow-hidden shadow-xl bg-[#063B2A] border-2 transition-all ${
               isDragging
-                ? 'border-[#3FA66B] ring-4 ring-[#3FA66B]/30 scale-[1.01]'
-                : 'border-[#DCE5DE]'
+                ? 'border-[#16A765] ring-4 ring-[#16A765]/30 scale-[1.01]'
+                : 'border-[#D8EADF]'
             }`}
           >
             {shutterFlash && (
@@ -1423,39 +1504,39 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
             />
 
             {!isCameraActive && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#172019]">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#063B2A]">
                 <img
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKt-Lpp410CvdTR-4Yp2a12sRV9fxjVAWoH0EBoX6rrCZbIUh5LnCXB3dactDvOrGywZEk3nuDTNfmHFknLKOVUcfpQmKRY0STwvTHwrj9LtfPd23Y_Zgd0Kq1b1tFGpXCQJnYK8WiH8v8-2GHuy5GLtRqCetnY4FIjgkUmoU591_1qSvietNsmcL9krPuOVNco_Pf7sLuFtFmzJOWyRlIb7E9Izs_GnMwzjX5m_WCQiF9S3YA9FCGFpxUDpq3q50uKHE"
                   alt="Camera preview background"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover opacity-35 mix-blend-luminosity brightness-110"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#172019] via-transparent to-[#172019]/80"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#063B2A] via-transparent to-[#063B2A]/80"></div>
               </div>
             )}
 
             {isDragging && (
-              <div className="absolute inset-0 z-30 bg-[#172019]/90 backdrop-blur-md flex flex-col items-center justify-center gap-2 p-4 text-center">
-                <span className="material-symbols-outlined text-4xl text-[#3FA66B] animate-bounce">
+              <div className="absolute inset-0 z-30 bg-[#063B2A]/90 backdrop-blur-md flex flex-col items-center justify-center gap-2 p-4 text-center">
+                <span className="material-symbols-outlined text-4xl text-[#16A765] animate-bounce">
                   drive_folder_upload
                 </span>
                 <p className="text-sm font-bold text-[#FFFFFF]">{t('uploadImage')}</p>
-                <p className="text-xs text-[#DCE5DE]">Directly imported from your files</p>
+                <p className="text-xs text-[#E9F8EF]">Directly imported from your files</p>
               </div>
             )}
 
-            <div className="absolute inset-x-4 h-0.5 bg-gradient-to-r from-transparent via-[#3FA66B] to-transparent shadow-[0_0_12px_#3FA66B] animate-laser-scan z-10 pointer-events-none" />
+            <div className="absolute inset-x-4 h-0.5 bg-gradient-to-r from-transparent via-[#16A765] to-transparent shadow-[0_0_12px_#16A765] animate-laser-scan z-10 pointer-events-none" />
 
             <div className="relative z-20 w-full h-full flex flex-col justify-between p-3.5 sm:p-4 pointer-events-none">
               <div className="flex items-center justify-between pointer-events-auto">
-                <div className="flex items-center gap-1.5 bg-[#FFFFFF]/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#DCE5DE] shadow-sm">
+                <div className="flex items-center gap-1.5 bg-[#FFFFFF]/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#D8EADF] shadow-sm">
                   <span
                     className={`w-2 h-2 rounded-full ${
-                      isCameraActive ? 'bg-[#3FA66B] animate-ping' : 'bg-[#3FA66B]'
+                      isCameraActive ? 'bg-[#16A765] animate-ping' : 'bg-[#16A765]'
                     }`}
                   />
-                  <span className="text-[10px] uppercase font-bold text-[#172019] tracking-wider truncate max-w-[140px]">
-                    {isCameraActive ? 'Live Camera (60 FPS)' : 'AI Viewfinder'}
+                  <span className="text-[10px] uppercase font-bold text-[#063B2A] tracking-wider truncate max-w-[140px]">
+                    {isCameraActive ? t('liveCamera') : t('aiViewfinder')}
                   </span>
                 </div>
 
@@ -1463,10 +1544,10 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
                   <button
                     aria-label="Toggle Flash"
                     onClick={handleToggleTorch}
-                    className={`w-8 h-8 rounded-full backdrop-blur-md flex items-center justify-center transition-all shadow-sm border border-[#DCE5DE] active:scale-95 ${
+                    className={`w-8 h-8 rounded-full backdrop-blur-md flex items-center justify-center transition-all shadow-sm border border-[#D8EADF] active:scale-95 ${
                       isTorchOn
-                        ? 'bg-[#3FA66B] text-[#FFFFFF]'
-                        : 'bg-[#FFFFFF]/80 text-[#172019] hover:text-[#3FA66B]'
+                        ? 'bg-[#16A765] text-[#FFFFFF]'
+                        : 'bg-[#FFFFFF]/80 text-[#063B2A] hover:text-[#16A765]'
                     }`}
                     type="button"
                     title={isTorchSupported ? 'Toggle mobile flashlight' : 'Flashlight'}
@@ -1479,7 +1560,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
                   <button
                     aria-label="Flip Camera"
                     onClick={handleToggleCameraFacing}
-                    className="w-8 h-8 rounded-full bg-[#FFFFFF]/80 backdrop-blur-md flex items-center justify-center text-[#172019] hover:text-[#3FA66B] transition-all shadow-sm border border-[#DCE5DE] active:scale-95"
+                    className="w-8 h-8 rounded-full bg-[#FFFFFF]/80 backdrop-blur-md flex items-center justify-center text-[#063B2A] hover:text-[#16A765] transition-all shadow-sm border border-[#D8EADF] active:scale-95"
                     type="button"
                     title={`Flip camera (Currently: ${
                       facingMode === 'environment' ? 'Rear' : 'Front'
@@ -1495,7 +1576,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
                     onClick={() =>
                       setDetectedItemIndex((prev) => (prev + 1) % demoDetections.length)
                     }
-                    className="w-8 h-8 rounded-full bg-[#FFFFFF]/80 backdrop-blur-md flex items-center justify-center text-[#172019] hover:text-[#3FA66B] transition-all shadow-sm border border-[#DCE5DE] active:scale-95"
+                    className="w-8 h-8 rounded-full bg-[#FFFFFF]/80 backdrop-blur-md flex items-center justify-center text-[#063B2A] hover:text-[#16A765] transition-all shadow-sm border border-[#D8EADF] active:scale-95"
                     type="button"
                     title="Cycle item"
                   >
@@ -1507,13 +1588,13 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
               <div className="relative flex-1 flex items-center justify-center pointer-events-auto my-2">
                 <div className="relative w-64 h-48 flex flex-col justify-between">
                   <div className="flex justify-between w-full">
-                    <div className="w-5 h-5 border-t-2 border-l-2 border-[#3FA66B] rounded-tl-md"></div>
-                    <div className="w-5 h-5 border-t-2 border-r-2 border-[#3FA66B] rounded-tr-md"></div>
+                    <div className="w-5 h-5 border-t-2 border-l-2 border-[#16A765] rounded-tl-md"></div>
+                    <div className="w-5 h-5 border-t-2 border-r-2 border-[#16A765] rounded-tr-md"></div>
                   </div>
 
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-2 h-2 rounded-full bg-[#3FA66B]/60 animate-ping" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#3FA66B] absolute" />
+                    <div className="w-2 h-2 rounded-full bg-[#16A765]/60 animate-ping" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#16A765] absolute" />
                   </div>
 
                   <div
@@ -1524,41 +1605,41 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
                         );
                       }
                     }}
-                    className="mx-auto w-60 rounded-xl bg-[#FFFFFF]/95 backdrop-blur-lg p-2.5 shadow-lg transform transition-transform hover:scale-105 border border-[#DCE5DE] cursor-pointer"
+                    className="mx-auto w-60 rounded-xl bg-[#FFFFFF]/95 backdrop-blur-lg p-2.5 shadow-lg transform transition-transform hover:scale-105 border border-[#D8EADF] cursor-pointer"
                   >
                     <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="w-2 h-2 rounded-full bg-[#3FA66B] animate-pulse"></span>
-                        <span className="font-editorial text-xs font-bold text-[#172019] truncate">
-                          {currentItem.name}
+                        <span className="w-2 h-2 rounded-full bg-[#16A765] animate-pulse"></span>
+                        <span className="font-editorial text-xs font-bold text-[#063B2A] truncate">
+                          {currentItem ? currentItem.name : t('readyToScanScrap')}
                         </span>
                       </div>
-                      <span className="font-code-metric text-[10px] text-[#174D35] bg-[#E8F3EB] px-1.5 py-0.5 rounded font-bold border border-[#DCE5DE]">
-                        {currentItem.confidence}
+                      <span className="font-code-metric text-[10px] text-[#063B2A] bg-[#E9F8EF] px-1.5 py-0.5 rounded font-bold border border-[#D8EADF]">
+                        {currentItem ? currentItem.confidence : 'EcoScan AI'}
                       </span>
                     </div>
 
                     <div className="mt-1 flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${currentItem.color}`}></span>
-                        <span className={`text-[11px] font-bold ${currentItem.textColor}`}>
-                          {currentItem.bin}
+                        <span className={`w-2 h-2 rounded-full ${currentItem ? currentItem.color : 'bg-[#16A765]'}`}></span>
+                        <span className={`text-[11px] font-bold ${currentItem ? currentItem.textColor : 'text-[#16A765]'}`}>
+                          {currentItem ? currentItem.bin : t('autoDetectionActive')}
                         </span>
                       </div>
-                      <span className="font-bold text-xs text-[#3FA66B]">
-                        {currentItem.marketPricePerKg}
+                      <span className="font-bold text-xs text-[#16A765]">
+                        {currentItem ? currentItem.marketPricePerKg : t('liveMandiRates')}
                       </span>
                     </div>
 
-                    <div className="mt-1 flex items-center gap-1 text-[#65736A] text-[10px]">
-                      <span className="material-symbols-outlined text-[13px] text-[#3FA66B]">eco</span>
-                      <span>{currentItem.co2}</span>
+                    <div className="mt-1 flex items-center gap-1 text-[#5D7469] text-[10px]">
+                      <span className="material-symbols-outlined text-[13px] text-[#16A765]">eco</span>
+                      <span>{currentItem ? currentItem.co2 : t('scanAnyItemAppraisal')}</span>
                     </div>
                   </div>
 
                   <div className="flex justify-between w-full">
-                    <div className="w-5 h-5 border-b-2 border-l-2 border-[#3FA66B] rounded-bl-md"></div>
-                    <div className="w-5 h-5 border-b-2 border-r-2 border-[#3FA66B] rounded-br-md"></div>
+                    <div className="w-5 h-5 border-b-2 border-l-2 border-[#16A765] rounded-bl-md"></div>
+                    <div className="w-5 h-5 border-b-2 border-r-2 border-[#16A765] rounded-br-md"></div>
                   </div>
                 </div>
               </div>
@@ -1568,21 +1649,21 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
                   <button
                     onClick={() => startCamera()}
                     disabled={isCameraLoading}
-                    className="bg-[#3FA66B] text-[#FFFFFF] font-bold text-xs px-3.5 py-1.5 rounded-full shadow-md flex items-center gap-1.5 active:scale-95 transition-all hover:bg-[#174D35] cursor-pointer"
+                    className="bg-[#16A765] text-[#FFFFFF] font-bold text-xs px-4 py-2 rounded-full shadow-md flex items-center gap-1.5 active:scale-95 transition-all hover:bg-[#0B5138] cursor-pointer"
                     type="button"
                   >
-                    <span className="material-symbols-outlined text-[16px]">videocam</span>
+                    <span className="material-symbols-outlined text-[18px]">videocam</span>
                     <span>
-                      {isCameraLoading ? 'Starting Camera...' : 'Turn On Real-Time Camera'}
+                      {isCameraLoading ? t('startingCamera') : t('turnOnCamera')}
                     </span>
                   </button>
                 ) : (
-                  <div className="bg-[#FFFFFF]/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#DCE5DE] flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[13px] text-[#3FA66B]">
+                  <div className="bg-[#FFFFFF]/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#D8EADF] flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[13px] text-[#16A765]">
                       center_focus_strong
                     </span>
-                    <p className="text-[11px] text-[#172019] text-center font-medium">
-                      Point phone at scrap & press the shutter button
+                    <p className="text-[11px] text-[#063B2A] text-center font-medium">
+                      {t('pointPhoneAtScrap')}
                     </p>
                   </div>
                 )}
@@ -1591,176 +1672,210 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
           </div>
 
           {/* MOBILE PHOTO SHUTTER DOCK */}
-          <div className="rounded-2xl bg-[#FFFFFF] p-3 border-2 border-[#DCE5DE] shadow-sm flex flex-col gap-2.5">
+          <div className="rounded-3xl bg-[#FFFFFF] p-4 border border-[#D8EADF] shadow-sm flex flex-col gap-3">
             <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-[#174D35] flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] text-[#3FA66B]">smartphone</span>
-                Mobile Shutter & Instant Capture
+              <span className="text-[11px] uppercase tracking-wider font-extrabold text-[#063B2A] flex items-center gap-1.5">
+                <span className="w-6 h-6 rounded-lg bg-[#E9F8EF] border border-[#D8EADF] flex items-center justify-center text-[#16A765]">
+                  <span className="material-symbols-outlined text-[16px]">smartphone</span>
+                </span>
+                {t('mobileShutterDock')}
               </span>
-              <span className="text-[10px] text-[#65736A]">
-                {isCameraActive ? 'Real-Time Frame' : 'Fast Snap Mode'}
+              <span className="text-xs font-bold text-[#16A765] bg-[#E9F8EF] px-2.5 py-0.5 rounded-full border border-[#D8EADF] flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16A765] animate-pulse" />
+                {isCameraActive ? t('realTimeFrame') : t('fastSnapMode')}
               </span>
             </div>
 
-            <div className="flex items-center justify-between gap-3 px-2 py-1">
+            <div className="flex items-center justify-between gap-3 px-1">
               <button
                 onClick={() => mobileCaptureInputRef.current?.click()}
-                className="flex-1 flex flex-col items-center justify-center gap-1 h-16 rounded-xl bg-[#F5F8F4] hover:bg-[#E8F3EB] border border-[#DCE5DE] hover:border-[#3FA66B]/40 text-[#172019] active:scale-95 transition-all group cursor-pointer"
+                className="flex-1 flex flex-col items-center justify-center gap-1.5 h-20 rounded-2xl bg-[#F4FBF6] hover:bg-[#E9F8EF] border border-[#D8EADF] hover:border-[#16A765] text-[#063B2A] active:scale-95 transition-all group cursor-pointer shadow-2xs"
                 type="button"
                 title="Open phone's native camera directly to take an instant photo"
               >
-                <span className="material-symbols-outlined text-[22px] text-[#3FA66B] group-hover:scale-110 transition-transform">
-                  photo_camera
+                <div className="w-8 h-8 rounded-full bg-[#FFFFFF] border border-[#D8EADF] flex items-center justify-center text-[#16A765] group-hover:scale-110 transition-transform shadow-xs">
+                  <span className="material-symbols-outlined text-[20px]">photo_camera</span>
+                </div>
+                <span className="text-xs font-extrabold text-[#063B2A] leading-none text-center">
+                  {t('phoneCamera')}
                 </span>
-                <span className="text-[10px] font-bold text-[#172019] leading-none text-center">
-                  Phone Camera
-                </span>
-                <span className="text-[8px] text-[#65736A] leading-none">Instant App</span>
+                <span className="text-[9px] text-[#5D7469] font-medium leading-none">{t('instantApp')}</span>
               </button>
 
               <div className="flex flex-col items-center justify-center">
                 <button
                   onClick={handleInstantShutter}
                   disabled={isCapturing || isAnalyzing}
-                  className={`w-18 h-18 rounded-full border-4 border-[#3FA66B]/30 p-1 flex items-center justify-center transition-all shadow-[0_0_20px_rgba(63,166,107,0.2)] active:scale-90 cursor-pointer ${
+                  className={`w-20 h-20 rounded-full border-4 border-[#16A765]/30 p-1 flex items-center justify-center transition-all shadow-[0_0_24px_rgba(22,167,101,0.35)] active:scale-90 cursor-pointer ${
                     isCapturing || isAnalyzing ? 'brightness-110 scale-95' : 'hover:scale-105'
                   }`}
                   type="button"
                   title="Snap instant photo & identify scrap"
                 >
-                  <div className="w-full h-full rounded-full bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] flex items-center justify-center font-bold shadow-inner">
-                    <span className="material-symbols-outlined text-[30px]">
-                      {isCapturing || isAnalyzing ? 'hourglass_top' : 'camera'}
+                  <div className="w-full h-full rounded-full bg-gradient-to-br from-[#16A765] to-[#0B5138] hover:from-[#45C96B] hover:to-[#16A765] text-[#FFFFFF] flex items-center justify-center font-bold shadow-inner">
+                    <span className="material-symbols-outlined text-[32px]">
+                      {isCapturing || isAnalyzing ? 'hourglass_top' : 'aperture'}
                     </span>
                   </div>
                 </button>
-                <span className="text-[10px] font-bold text-[#3FA66B] mt-1.5 leading-none">
-                  {isCapturing || isAnalyzing ? 'Analyzing...' : 'Snap & Identify'}
+                <span className="text-xs font-extrabold text-[#16A765] mt-1.5 leading-none">
+                  {isCapturing || isAnalyzing ? t('analyzing') : t('snapAndIdentify')}
                 </span>
               </div>
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex flex-col items-center justify-center gap-1 h-16 rounded-xl bg-[#F5F8F4] hover:bg-[#E8F3EB] border border-[#DCE5DE] hover:border-[#3FA66B]/40 text-[#172019] active:scale-95 transition-all group cursor-pointer"
+                className="flex-1 flex flex-col items-center justify-center gap-1.5 h-20 rounded-2xl bg-[#F4FBF6] hover:bg-[#E9F8EF] border border-[#D8EADF] hover:border-[#16A765] text-[#063B2A] active:scale-95 transition-all group cursor-pointer shadow-2xs"
                 type="button"
                 title="Choose a photo from your gallery or computer folders"
               >
-                <span className="material-symbols-outlined text-[22px] text-[#3FA66B] group-hover:scale-110 transition-transform">
-                  folder_open
+                <div className="w-8 h-8 rounded-full bg-[#FFFFFF] border border-[#D8EADF] flex items-center justify-center text-[#16A765] group-hover:scale-110 transition-transform shadow-xs">
+                  <span className="material-symbols-outlined text-[20px]">folder</span>
+                </div>
+                <span className="text-xs font-extrabold text-[#063B2A] leading-none text-center">
+                  {t('galleryFiles')}
                 </span>
-                <span className="text-[10px] font-bold text-[#172019] leading-none text-center">
-                  Gallery / Files
-                </span>
-                <span className="text-[8px] text-[#65736A] leading-none">Device Storage</span>
+                <span className="text-[9px] text-[#5D7469] font-medium leading-none">{t('deviceStorage')}</span>
               </button>
             </div>
           </div>
 
-          {/* Quick Test Presets */}
-          <div className="rounded-xl bg-[#151B18] p-3 border border-[#303832] flex flex-col gap-2">
+          {/* QUICK TEST PRESETS */}
+          <div className="rounded-3xl bg-[#063B2A] p-5 border border-[#0B5138] flex flex-col gap-3 shadow-lg text-[#FFFFFF]">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-[#B8E600]">
-                  desktop_windows
-                </span>
-                <span className="text-xs font-bold text-[#FFFFFF]">Quick Test Presets</span>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-[#16A765] flex items-center justify-center text-[#FFFFFF]">
+                  <span className="material-symbols-outlined text-[18px]">bolt</span>
+                </div>
+                <span className="text-sm font-extrabold text-[#FFFFFF]">{t('quickTestPresets')}</span>
               </div>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] text-[#B8E600] hover:underline flex items-center gap-0.5 font-medium cursor-pointer"
+                className="px-3 py-1.5 rounded-full bg-[#0B5138] hover:bg-[#16A765] border border-[#16A765]/40 text-[#FFFFFF] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 type="button"
               >
-                <span>Browse Local Drive</span>
-                <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                <span className="material-symbols-outlined text-[16px]">folder</span>
+                <span>{t('browseLocalDrive')}</span>
+                <span className="material-symbols-outlined text-[14px]">chevron_right</span>
               </button>
             </div>
 
-            <p className="text-[11px] text-[#9AA59D] leading-relaxed">
-              Test scrap identification and live price calculation with 1-click presets:
+            <p className="text-xs text-[#E9F8EF]/80 font-medium">
+              {t('testScrapPresetsDesc')}
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-0.5">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-1">
               {sampleScrapPresets.map((sample) => (
                 <button
                   key={sample.label}
                   onClick={() => handleSelectSample(sample)}
-                  className="flex items-center gap-1.5 p-2 rounded-lg bg-[#151B18] hover:bg-[#151B18] border border-[#303832] hover:border-[#B8E600]/50 text-left transition-all group cursor-pointer"
+                  className={`flex items-center gap-2.5 p-3 rounded-2xl border text-left transition-all group cursor-pointer shadow-xs ${
+                    sample.label.includes('Copper')
+                      ? 'bg-[#2A1B40] border-[#7C3AED]/40 hover:border-[#7C3AED]'
+                      : sample.label.includes('Kitchen')
+                      ? 'bg-[#19401C] border-[#45C96B]/40 hover:border-[#45C96B]'
+                      : sample.label.includes('Cardboard')
+                      ? 'bg-[#382E15] border-[#D97706]/40 hover:border-[#D97706]'
+                      : 'bg-[#0B3D32] border-[#16A765]/40 hover:border-[#16A765]'
+                  }`}
                   type="button"
                 >
-                  <span className="material-symbols-outlined text-[16px] text-[#B8E600] shrink-0 group-hover:scale-110 transition-transform">
-                    {sample.icon}
-                  </span>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[11px] font-semibold text-[#FFFFFF] truncate">
-                      {sample.label}
+                  <div className="w-9 h-9 rounded-xl bg-[#FFFFFF]/15 flex items-center justify-center text-[#FFFFFF] group-hover:scale-110 transition-transform shrink-0">
+                    <span className="material-symbols-outlined text-[20px]">{sample.icon}</span>
+                  </div>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-xs font-extrabold text-[#FFFFFF] truncate">
+                      {sample.labelKey ? t(sample.labelKey as any) : sample.label}
                     </span>
-                    <span className="text-[9px] text-[#B8E600] font-bold truncate">
+                    <span className="text-[10px] text-[#45C96B] font-bold truncate">
                       {sample.marketPricePerKg}
                     </span>
                   </div>
+                  <span className="material-symbols-outlined text-[16px] text-[#E9F8EF]/60 group-hover:translate-x-0.5 transition-transform">
+                    chevron_right
+                  </span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 4-Bin Categorization Track */}
-          <div className="flex flex-col gap-2">
+          {/* NATIONAL SWM CATEGORIZATION */}
+          <div className="rounded-3xl bg-[#FFFFFF] p-5 border border-[#D8EADF] flex flex-col gap-3 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold text-[#B8E600] tracking-widest">
-                National SWM Categorization
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-[#E9F8EF] border border-[#D8EADF] flex items-center justify-center text-[#16A765]">
+                  <span className="material-symbols-outlined text-[18px]">eco</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-extrabold uppercase text-[#063B2A] tracking-wider">
+                    {t('nationalSwmCategorization')}
+                  </span>
+                  <span className="text-[10px] font-semibold text-[#5D7469]">4 Streams • 12+ Waste Categories</span>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-[#16A765] bg-[#E9F8EF] px-2.5 py-1 rounded-full border border-[#D8EADF] flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16A765] animate-pulse" />
+                {t('streamsActive')}
               </span>
-              <span className="font-code-metric text-[11px] text-[#9AA59D]">4 Streams Active</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-xl bg-[#151B18] p-2.5 flex items-center justify-between shadow-sm border border-[#303832]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#4DA3FF] shrink-0"></span>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-1">
+              <div className="rounded-2xl bg-[#EFF6FF] border border-[#BFDBFE] p-3 flex items-center justify-between text-[#1E40AF]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#2563EB] text-[#FFFFFF] flex items-center justify-center font-bold shrink-0">
+                    <span className="material-symbols-outlined text-[20px]">recycling</span>
+                  </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold text-[#FFFFFF] truncate">Dry Scrap</span>
-                    <span className="text-[10px] text-[#9AA59D] truncate">Iron, Paper, PET</span>
+                    <span className="text-xs font-extrabold text-[#1E40AF] truncate">{t('dryScrapLabel')}</span>
+                    <span className="text-[10px] text-[#3B82F6] truncate">{t('dryScrapDesc')}</span>
                   </div>
                 </div>
-                <span className="font-code-metric text-xs text-[#F4F7F2] font-bold ml-1">
+                <span className="font-code-metric text-xs font-extrabold bg-[#FFFFFF] px-2 py-0.5 rounded-full border border-[#BFDBFE] ml-1">
                   {scanCounts.dry}
                 </span>
               </div>
 
-              <div className="rounded-xl bg-[#151B18] p-2.5 flex items-center justify-between shadow-sm border border-[#303832]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#B8E600] shrink-0"></span>
+              <div className="rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] p-3 flex items-center justify-between text-[#166534]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#16A765] text-[#FFFFFF] flex items-center justify-center font-bold shrink-0">
+                    <span className="material-symbols-outlined text-[20px]">eco</span>
+                  </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold text-[#FFFFFF] truncate">Wet Waste</span>
-                    <span className="text-[10px] text-[#9AA59D] truncate">Kitchen Peels</span>
+                    <span className="text-xs font-extrabold text-[#166534] truncate">{t('wetWasteLabel')}</span>
+                    <span className="text-[10px] text-[#22C55E] truncate">{t('wetWasteDesc')}</span>
                   </div>
                 </div>
-                <span className="font-code-metric text-xs text-[#B8E600] font-bold ml-1">
+                <span className="font-code-metric text-xs font-extrabold bg-[#FFFFFF] px-2 py-0.5 rounded-full border border-[#BBF7D0] ml-1">
                   {scanCounts.wet}
                 </span>
               </div>
 
-              <div className="rounded-xl bg-[#151B18] p-2.5 flex items-center justify-between shadow-sm border border-[#303832]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#FF453A] shrink-0"></span>
+              <div className="rounded-2xl bg-[#FEF2F2] border border-[#FECACA] p-3 flex items-center justify-between text-[#991B1B]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#DC2626] text-[#FFFFFF] flex items-center justify-center font-bold shrink-0">
+                    <span className="material-symbols-outlined text-[20px]">warning</span>
+                  </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold text-[#FFFFFF] truncate">Hazardous</span>
-                    <span className="text-[10px] text-[#9AA59D] truncate">Lead, Paints</span>
+                    <span className="text-xs font-extrabold text-[#991B1B] truncate">{t('hazardous')}</span>
+                    <span className="text-[10px] text-[#EF4444] truncate">{t('hazardousDesc')}</span>
                   </div>
                 </div>
-                <span className="font-code-metric text-xs text-[#FF453A] font-bold ml-1">
+                <span className="font-code-metric text-xs font-extrabold bg-[#FFFFFF] px-2 py-0.5 rounded-full border border-[#FECACA] ml-1">
                   {scanCounts.hazard}
                 </span>
               </div>
 
-              <div className="rounded-xl bg-[#151B18] p-2.5 flex items-center justify-between shadow-sm border border-[#303832]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#B8E600] shrink-0"></span>
+              <div className="rounded-2xl bg-[#F3E8FF] border border-[#E9D5FF] p-3 flex items-center justify-between text-[#6B21A8]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#7C3AED] text-[#FFFFFF] flex items-center justify-center font-bold shrink-0">
+                    <span className="material-symbols-outlined text-[20px]">devices</span>
+                  </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold text-[#FFFFFF] truncate">E-Waste</span>
-                    <span className="text-[10px] text-[#9AA59D] truncate">PCBs, Copper</span>
+                    <span className="text-xs font-extrabold text-[#6B21A8] truncate">{t('eWaste')}</span>
+                    <span className="text-[10px] text-[#A855F7] truncate">{t('eWasteDesc')}</span>
                   </div>
                 </div>
-                <span className="font-code-metric text-xs text-[#B8E600] font-bold ml-1">
+                <span className="font-code-metric text-xs font-extrabold bg-[#FFFFFF] px-2 py-0.5 rounded-full border border-[#E9D5FF] ml-1">
                   {scanCounts.ewaste}
                 </span>
               </div>

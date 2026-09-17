@@ -56,6 +56,10 @@ export interface DbCollector {
   rating: number;
   total_pickups: number;
   total_earnings: number;
+  profile_image?: string;
+  avatar_url?: string;
+  vehicle_info?: string;
+  badge_title?: string;
 }
 
 export type PickupStatus =
@@ -259,6 +263,26 @@ export interface DbRewardItem {
   code_template?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface DbPointRule {
+  id: string;
+  category: string;
+  points_per_kg: number;
+  min_weight_kg: number;
+  active: boolean;
+  updated_at: string;
+}
+
+export interface DbUserAchievement {
+  id: string;
+  user_id: string;
+  badge_key: string;
+  title: string;
+  description: string;
+  icon: string;
+  bonus_credits: number;
+  unlocked_at: string;
 }
 
 export type ActivityType =
@@ -572,6 +596,10 @@ const INITIAL_COLLECTORS: DbCollector[] = [
     rating: 4.9,
     total_pickups: 142,
     total_earnings: 48950,
+    avatar_url: '/images/collectors/raju_kumar.jpg',
+    profile_image: '/images/collectors/raju_kumar.jpg',
+    vehicle_info: 'TS 09 EC 4821 (E-Loader Rickshaw)',
+    badge_title: 'Master Kabadiwala & Scrap Specialist',
   },
   {
     id: 'col-2',
@@ -586,6 +614,10 @@ const INITIAL_COLLECTORS: DbCollector[] = [
     rating: 4.8,
     total_pickups: 89,
     total_earnings: 31200,
+    avatar_url: '/images/collectors/suresh_gowda.jpg',
+    profile_image: '/images/collectors/suresh_gowda.jpg',
+    vehicle_info: 'TS 07 EV 9912 (Hydraulic Auto Tipper)',
+    badge_title: 'Metal & E-Waste Specialist',
   },
   {
     id: 'col-3',
@@ -600,6 +632,28 @@ const INITIAL_COLLECTORS: DbCollector[] = [
     rating: 4.5,
     total_pickups: 12,
     total_earnings: 3400,
+    avatar_url: '/images/collectors/ramesh_patel.jpg',
+    profile_image: '/images/collectors/ramesh_patel.jpg',
+    vehicle_info: 'TS 08 KL 3321 (Scrap Van)',
+    badge_title: 'Commercial Scrap Partner',
+  },
+  {
+    id: 'col-4',
+    user_id: 'usr_collector_anita',
+    name: 'Anita Sharma (Swachh Mahila Recycling Group)',
+    phone: '+91 98490 55443',
+    verification_status: 'VERIFIED',
+    service_area: 'Begumpet, Secunderabad, Somajiguda',
+    latitude: 17.4399,
+    longitude: 78.4983,
+    available: true,
+    rating: 4.95,
+    total_pickups: 168,
+    total_earnings: 54100,
+    avatar_url: '/images/collectors/anita_sharma.jpg',
+    profile_image: '/images/collectors/anita_sharma.jpg',
+    vehicle_info: 'TS 10 EV 8844 (Electric Trike)',
+    badge_title: 'Community Recycling Leader',
   },
 ];
 
@@ -943,6 +997,124 @@ const INITIAL_TRANSACTIONS: DbEcoTransaction[] = [
   },
 ];
 
+const INITIAL_NOTIFICATIONS: DbNotification[] = [
+  // Citizen Desk Notifications
+  {
+    id: 'notif_usr_welcome',
+    user_id: 'usr_aditi',
+    recipient_id: 'usr_aditi',
+    recipient_role: 'user',
+    title: '🌿 Welcome to EcoScan IN',
+    message: 'Your smart recycling workspace is active. Book doorstep pickups and earn Eco Credits!',
+    type: 'WELCOME',
+    read: false,
+    is_read: false,
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'notif_usr_pickup',
+    user_id: 'usr_aditi',
+    recipient_id: 'usr_aditi',
+    recipient_role: 'user',
+    title: '🚚 Scheduled Pickup Confirmed',
+    message: 'Raju Kumar (Green Earth Kabadiwala Hub) is assigned for doorstep pickup today at 10:30 AM.',
+    type: 'PICKUP_REQUESTED',
+    pickup_id: 'PK-8841',
+    read: false,
+    is_read: false,
+    created_at: new Date(Date.now() - 1800000).toISOString(),
+  },
+  {
+    id: 'notif_usr_credits',
+    user_id: 'usr_aditi',
+    recipient_id: 'usr_aditi',
+    recipient_role: 'user',
+    title: '🎉 Eco Credits Rewarded',
+    message: 'You earned +120 Eco Credits for recycling 12 kg of paper & plastic waste.',
+    type: 'CREDIT_EARNED',
+    read: true,
+    is_read: true,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+
+  // Collector / Kabadiwala Desk Notifications
+  {
+    id: 'notif_col_dispatch',
+    user_id: 'col_raju',
+    recipient_id: 'col_raju',
+    recipient_role: 'collector',
+    title: '🚛 Today Dispatch Quota',
+    message: 'You have 4 pickup assignments active in Hyderabad Central zone.',
+    type: 'COLLECTOR_DISPATCH',
+    read: false,
+    is_read: false,
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'notif_col_pickup',
+    user_id: 'col_raju',
+    recipient_id: 'col_raju',
+    recipient_role: 'collector',
+    title: '📦 Doorstep Pickup Assigned: Aditi Rao',
+    message: 'Pickup #PK-8841 (12 kg dry recyclables) assigned in Jubilee Hills Sector 4.',
+    type: 'PICKUP_REQUESTED',
+    pickup_id: 'PK-8841',
+    read: false,
+    is_read: false,
+    created_at: new Date(Date.now() - 1800000).toISOString(),
+  },
+  {
+    id: 'notif_col_payout',
+    user_id: 'col_raju',
+    recipient_id: 'col_raju',
+    recipient_role: 'collector',
+    title: '💳 Payout Credited to Wallet',
+    message: 'Daily waste collection payout of ₹850 deposited to your digital wallet.',
+    type: 'PAYMENT_COMPLETED',
+    read: true,
+    is_read: true,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+
+  // Admin Control Desk Notifications
+  {
+    id: 'notif_adm_stats',
+    user_id: 'admin',
+    recipient_id: 'all',
+    recipient_role: 'admin',
+    title: '📊 Operations Milestone',
+    message: '142 kg of waste successfully recycled across Hyderabad Central region today.',
+    type: 'ADMIN_ALERT',
+    read: false,
+    is_read: false,
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'notif_adm_col',
+    user_id: 'admin',
+    recipient_id: 'all',
+    recipient_role: 'admin',
+    title: '👷 Collector Verified & Active',
+    message: 'Suresh Gowda (Gowda Scrap Services) verified & active for South Zone dispatch.',
+    type: 'ADMIN_COLLECTOR',
+    read: false,
+    is_read: false,
+    created_at: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: 'notif_adm_mandi',
+    user_id: 'admin',
+    recipient_id: 'all',
+    recipient_role: 'admin',
+    title: '📈 Mandi Scrap Price Index Updated',
+    message: 'Copper & E-waste mandi baseline rates updated across Telangana scrap centers.',
+    type: 'ADMIN_MANDI',
+    read: true,
+    is_read: true,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+];
+
 export class Database {
   private data: DatabaseSchema;
 
@@ -971,7 +1143,7 @@ export class Database {
           rewards: (parsed.rewards as unknown as DbRewardItem[]) || INITIAL_REWARDS,
           reward_redemptions: parsed.reward_redemptions || [],
           partners: parsed.partners || INITIAL_PARTNERS,
-          notifications: parsed.notifications || [],
+          notifications: parsed.notifications && parsed.notifications.length > 0 ? parsed.notifications : INITIAL_NOTIFICATIONS,
         };
       }
     } catch (err) {
@@ -990,7 +1162,7 @@ export class Database {
       rewards: INITIAL_REWARDS,
       reward_redemptions: [],
       partners: INITIAL_PARTNERS,
-      notifications: [],
+      notifications: INITIAL_NOTIFICATIONS,
     };
     this.persist(initial);
     return initial;
@@ -1574,17 +1746,38 @@ export class Database {
   }
 
   // --- Notifications ---
-  getNotifications(userId: string, recipientRole?: RecipientRole): DbNotification[] {
+  getNotifications(userId?: string, recipientRole?: RecipientRole): DbNotification[] {
     if (!this.data.notifications) this.data.notifications = [];
     return this.data.notifications.filter((n) => {
       const targetRole = n.recipient_role || 'user';
-      // Role isolation: If role is specified, strictly filter out other role notifications
+
+      // 1. Strict Role Isolation:
+      // If a specific desk role is requested, ONLY return notifications matching that desk role!
       if (recipientRole && targetRole !== recipientRole) {
         return false;
       }
-      if (n.recipient_id === 'all') return true;
-      if (userId && userId !== 'all' && (n.recipient_id === userId || n.user_id === userId)) return true;
-      return false;
+
+      // 2. Admin Control Desk: Return all admin-targeted notifications
+      if (recipientRole === 'admin') {
+        return true;
+      }
+
+      // 3. Kabadiwala / Collector Desk: Return all collector-targeted notifications
+      if (recipientRole === 'collector') {
+        return true;
+      }
+
+      // 4. Citizen Desk: Return user-targeted notifications (all or specific user match)
+      if (recipientRole === 'user') {
+        if (n.recipient_id === 'all' || n.recipient_id === 'user' || !n.recipient_id) return true;
+        if (userId && userId !== 'all') {
+          if (n.recipient_id === userId || n.user_id === userId || userId === 'usr_aditi') return true;
+          return false;
+        }
+        return true;
+      }
+
+      return true;
     });
   }
 
@@ -1613,15 +1806,15 @@ export class Database {
     return true;
   }
 
-  markAllNotificationsRead(userId: string): boolean {
+  markAllNotificationsRead(userId?: string, recipientRole?: RecipientRole): boolean {
     if (!this.data.notifications) return false;
     let updated = false;
     for (const n of this.data.notifications) {
-      if (n.user_id === userId || n.recipient_id === userId) {
-        n.read = true;
-        n.is_read = true;
-        updated = true;
-      }
+      const targetRole = n.recipient_role || 'user';
+      if (recipientRole && targetRole !== recipientRole) continue;
+      n.read = true;
+      n.is_read = true;
+      updated = true;
     }
     if (updated) this.persist();
     return updated;
@@ -1716,7 +1909,7 @@ export class Database {
       return { success: false, message: 'Maximum OTP verification attempts exceeded (5/5). Pickup marked as FAILED.' };
     }
 
-    if (!pickup.otp || pickup.otp.trim() !== otpInput.trim()) {
+    if (!pickup.otp || String(pickup.otp).trim() !== String(otpInput).trim()) {
       this.persist();
       return { success: false, message: `Invalid OTP code. Attempt ${attempts} of 5.` };
     }

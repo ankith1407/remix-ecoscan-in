@@ -14,117 +14,167 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onContinueAsGuest,
 }) => {
   const { t } = useI18n();
-  return (
-    <div className="min-h-screen bg-[#F5F8F4] text-[#172019] flex flex-col justify-between selection:bg-[#3FA66B] selection:text-[#FFFFFF] relative overflow-hidden">
-      {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#3FA66B]/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute -bottom-20 right-0 w-80 h-80 bg-[#E8F3EB] rounded-full blur-2xl pointer-events-none"></div>
 
-      {/* Top micro bar */}
-      <header className="w-full max-w-lg mx-auto px-6 pt-6 flex items-center justify-between z-10">
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFFFF] border border-[#DCE5DE] text-[#174D35] text-[10px] font-bold uppercase tracking-wider shadow-xs">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#3FA66B] animate-pulse"></span>
-          <span>MoHUA & CPCB Certified</span>
+  const ecoSteps = [
+    { title: 'AI IDENTIFICATION', icon: 'center_focus_strong', desc: 'Gemini AI Vision' },
+    { title: 'WASTE UNDERSTANDING', icon: 'psychology', desc: 'Category & Value' },
+    { title: 'SCHEDULE PICKUP', icon: 'calendar_month', desc: 'Doorstep Booking' },
+    { title: 'LIVE TRACKING', icon: 'distance', desc: 'Real-time GPS Map' },
+    { title: 'OTP VERIFICATION', icon: 'pin', desc: 'Secure 4-Digit Handover' },
+    { title: 'COLLECTION', icon: 'scale', desc: 'Digital Scale Weighing' },
+    { title: 'REWARD', icon: 'workspace_premium', desc: 'EcoPoints Wallet' },
+    { title: 'CIRCULAR RECYCLING', icon: 'recycling', desc: 'Verified Processing' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F7FCF8] text-[#12352A] flex flex-col justify-between selection:bg-[#16A765] selection:text-[#FFFFFF] relative overflow-hidden">
+      {/* Background ambient lighting */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#16A765]/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-20 right-0 w-[400px] h-[400px] bg-[#087A4B]/5 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Top Header Navigation Bar */}
+      <header className="w-full max-w-5xl mx-auto px-6 pt-6 flex items-center justify-between z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#FFFFFF] border border-[#D8EADF] flex items-center justify-center text-[#087A4B] shadow-xs">
+            <span className="material-symbols-outlined text-[24px] text-[#16A765]">recycling</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-headline font-extrabold text-xl tracking-tight text-[#12352A]">EcoScan</span>
+            <span className="text-xs font-bold text-[#16A765] px-1.5 py-0.5 rounded border border-[#D8EADF] bg-[#FFFFFF] shadow-2xs">IN</span>
+          </div>
         </div>
-        <LanguageSelector />
-        <button
-          onClick={onContinueAsGuest}
-          className="text-xs text-[#65736A] hover:text-[#3FA66B] transition-colors font-semibold underline underline-offset-4"
-          type="button"
-        >
-          {t('exploreGuest')}
-        </button>
+
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFFFF] border border-[#D8EADF] text-[#087A4B] text-[10px] font-bold uppercase tracking-wider shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#16A765] animate-pulse" />
+            <span>AI Smart-City Platform</span>
+          </div>
+          <LanguageSelector />
+        </div>
       </header>
 
-      {/* Main Hero & Company Logo Centerpiece */}
-      <main className="flex-1 max-w-lg mx-auto w-full px-6 flex flex-col items-center justify-center text-center my-auto py-8 z-10">
-        {/* Company Logo Seal */}
-        <div className="relative mb-6">
-          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-[#FFFFFF] border-2 border-[#DCE5DE] p-2 flex items-center justify-center shadow-md relative group">
-            <div className="w-full h-full rounded-2xl bg-[#E8F3EB] border border-[#3FA66B]/30 flex items-center justify-center text-[#3FA66B] shadow-inner">
-              <span className="material-symbols-outlined text-[48px] sm:text-[56px] transition-transform duration-300 group-hover:rotate-45">
-                recycling
-              </span>
-            </div>
-            {/* Corner aesthetic accent ticks */}
-            <div className="absolute -top-1.5 -left-1.5 w-3 h-3 border-t-2 border-l-2 border-[#3FA66B]"></div>
-            <div className="absolute -top-1.5 -right-1.5 w-3 h-3 border-t-2 border-r-2 border-[#3FA66B]"></div>
-            <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 border-b-2 border-l-2 border-[#3FA66B]"></div>
-            <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 border-b-2 border-r-2 border-[#3FA66B]"></div>
-          </div>
-          {/* Version badge */}
-          <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-[#3FA66B] text-[#FFFFFF] font-code-metric text-[10px] font-bold shadow-xs whitespace-nowrap">
-            SBM-Urban 2.0
-          </span>
+      {/* Main Hero & Content Container */}
+      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-8 flex flex-col items-center text-center my-auto z-10">
+        
+        {/* Status Pill Badge */}
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFFFFF] border border-[#D8EADF] shadow-xs mb-6">
+          <span className="material-symbols-outlined text-[#16A765] text-[18px]">verified</span>
+          <span className="text-xs font-semibold text-[#087A4B]">Certified Source Segregation & Doorstep Kabadiwala</span>
         </div>
 
-        {/* Company Title */}
-        <div className="flex items-center gap-2 mb-2">
-          <h1 className="font-editorial italic text-4xl sm:text-5xl font-bold tracking-tight text-[#172019]">
-            EcoScan
-          </h1>
-          <span className="font-sans text-sm font-bold text-[#3FA66B] px-2 py-0.5 rounded border border-[#DCE5DE] bg-[#FFFFFF] tracking-wider shadow-xs">
-            IN
-          </span>
-        </div>
+        {/* Hero Title & Subtitle */}
+        <h1 className="font-headline font-extrabold text-4xl sm:text-6xl text-[#12352A] tracking-tight leading-[1.1] max-w-2xl mb-4">
+          Identify. Recycle. <span className="bg-gradient-to-r from-[#16A765] to-[#45C96B] bg-clip-text text-transparent">Reward.</span>
+        </h1>
 
-        {/* Subtitle */}
-        <p className="font-editorial italic text-base sm:text-lg text-[#174D35] font-bold mb-3">
-          AI Waste Segregation & Circular Economy
+        <p className="text-base sm:text-lg text-[#60766C] max-w-xl leading-relaxed mb-8 font-medium">
+          AI-powered waste identification and smart recycling management. Scan scrap, get real-time market rates, schedule doorstep pickups, and earn verified EcoPoints.
         </p>
 
-        <p className="text-xs sm:text-sm text-[#65736A] max-w-sm leading-relaxed mb-8">
-          India's intelligent civic platform for 4-bin source segregation, verified scrap market payouts, and doorstep kabadiwala bookings.
-        </p>
-
-        {/* Feature pillars */}
-        <div className="w-full grid grid-cols-3 gap-2.5 mb-8">
-          <div className="p-3 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center gap-1 text-center shadow-xs">
-            <span className="material-symbols-outlined text-[#3FA66B] text-[22px]">center_focus_strong</span>
-            <span className="text-[11px] font-bold text-[#172019]">AI Vision</span>
-            <span className="text-[9px] text-[#65736A]">Instant 4-Bin Sort</span>
-          </div>
-
-          <div className="p-3 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center gap-1 text-center shadow-xs">
-            <span className="material-symbols-outlined text-[#3FA66B] text-[22px]">electric_rickshaw</span>
-            <span className="text-[11px] font-bold text-[#172019]">Doorstep</span>
-            <span className="text-[9px] text-[#65736A]">Verified Pickups</span>
-          </div>
-
-          <div className="p-3 rounded-xl bg-[#FFFFFF] border border-[#DCE5DE] flex flex-col items-center gap-1 text-center shadow-xs">
-            <span className="material-symbols-outlined text-[#3FA66B] text-[22px]">workspace_premium</span>
-            <span className="text-[11px] font-bold text-[#172019]">Green Credits</span>
-            <span className="text-[9px] text-[#65736A]">EPR Certificate</span>
-          </div>
-        </div>
-
-        {/* Primary CTA: Get Started Button */}
-        <div className="w-full flex flex-col gap-3">
+        {/* Action CTAs */}
+        <div className="w-full max-w-md flex flex-col sm:flex-row gap-3.5 mb-12">
           <button
             onClick={onGetStarted}
-            className="w-full h-14 rounded-2xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] font-bold text-base shadow-[0_8px_24px_rgba(63,166,107,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer"
+            className="flex-1 h-13 rounded-2xl bg-gradient-to-r from-[#16A765] to-[#45C96B] hover:opacity-95 text-[#FFFFFF] font-bold text-sm shadow-[0_6px_20px_rgba(22,167,101,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer"
             type="button"
           >
-            <span>{t('getStarted')}</span>
-            <span className="material-symbols-outlined text-[22px] transition-transform group-hover:translate-x-1">
+            <span className="material-symbols-outlined text-[20px]">center_focus_strong</span>
+            <span>SCAN WASTE</span>
+            <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">
               arrow_forward
             </span>
           </button>
 
           <button
-            onClick={onCreateAccount}
-            className="w-full h-12 rounded-xl bg-[#FFFFFF] hover:bg-[#E8F3EB] text-[#172019] border border-[#DCE5DE] font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+            onClick={onContinueAsGuest}
+            className="flex-1 h-13 rounded-2xl bg-[#FFFFFF] hover:bg-[#E8F8EE] text-[#12352A] border border-[#D8EADF] font-bold text-sm transition-colors flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
             type="button"
           >
-            <span className="material-symbols-outlined text-[18px] text-[#3FA66B]">person_add</span>
-            <span>{t('createAccount')}</span>
+            <span className="material-symbols-outlined text-[20px] text-[#16A765]">calendar_add_on</span>
+            <span>SCHEDULE PICKUP</span>
+          </button>
+        </div>
+
+        {/* ECO-SPHERE VISUAL MOTIF / WORKFLOW */}
+        <div className="w-full bg-[#FFFFFF] rounded-3xl p-6 border border-[#D8EADF] shadow-sm mb-8">
+          <div className="flex items-center justify-between border-b border-[#D8EADF] pb-3 mb-5">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#16A765] text-[20px]">donut_large</span>
+              <span className="text-xs uppercase font-extrabold tracking-wider text-[#087A4B]">
+                ECOSPHERE™ CIRCULAR ECOSYSTEM
+              </span>
+            </div>
+            <span className="text-[11px] font-bold text-[#60766C]">End-to-End Smart Lifecycle</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {ecoSteps.map((step, idx) => (
+              <div
+                key={step.title}
+                className="p-3.5 rounded-2xl bg-[#F7FCF8] border border-[#D8EADF] flex flex-col items-center text-center gap-1.5 hover:border-[#16A765] transition-colors group shadow-2xs"
+              >
+                <div className="w-9 h-9 rounded-xl bg-[#FFFFFF] border border-[#D8EADF] flex items-center justify-center text-[#16A765] group-hover:bg-[#16A765] group-hover:text-[#FFFFFF] transition-colors shadow-2xs">
+                  <span className="material-symbols-outlined text-[18px]">{step.icon}</span>
+                </div>
+                <span className="text-[10px] font-extrabold text-[#12352A] leading-tight">
+                  0{idx + 1}. {step.title}
+                </span>
+                <span className="text-[9px] text-[#60766C] font-medium">{step.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Feature Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full text-left">
+          <div className="p-5 rounded-3xl bg-[#FFFFFF] border border-[#D8EADF] shadow-sm flex flex-col gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#E8F8EE] flex items-center justify-center text-[#16A765]">
+              <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+            </div>
+            <h3 className="font-headline font-bold text-sm text-[#12352A]">Gemini AI Scanner</h3>
+            <p className="text-xs text-[#60766C]">Instant material recognition, 4-bin categorization & market rate estimations.</p>
+          </div>
+
+          <div className="p-5 rounded-3xl bg-[#FFFFFF] border border-[#D8EADF] shadow-sm flex flex-col gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#E8F8EE] flex items-center justify-center text-[#16A765]">
+              <span className="material-symbols-outlined text-[20px]">local_shipping</span>
+            </div>
+            <h3 className="font-headline font-bold text-sm text-[#12352A]">Smart Doorstep Pickups</h3>
+            <p className="text-xs text-[#60766C]">Certified local Kabadiwalas with digital scales & live GPS trip tracking.</p>
+          </div>
+
+          <div className="p-5 rounded-3xl bg-[#FFFFFF] border border-[#D8EADF] shadow-sm flex flex-col gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#E8F8EE] flex items-center justify-center text-[#16A765]">
+              <span className="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+            </div>
+            <h3 className="font-headline font-bold text-sm text-[#12352A]">EcoPoints Loyalty Wallet</h3>
+            <p className="text-xs text-[#60766C]">Earn credits for every kg recycled and redeem vouchers for green brands.</p>
+          </div>
+        </div>
+
+        {/* Quick Login / Account Link */}
+        <div className="mt-8 flex items-center gap-4 text-xs">
+          <button
+            onClick={onCreateAccount}
+            className="text-[#087A4B] font-bold hover:underline"
+            type="button"
+          >
+            Create New Account
+          </button>
+          <span className="text-[#D8EADF]">•</span>
+          <button
+            onClick={onGetStarted}
+            className="text-[#60766C] font-semibold hover:text-[#12352A]"
+            type="button"
+          >
+            Sign In with Password
           </button>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="w-full max-w-lg mx-auto px-6 pb-6 text-center text-[10px] text-[#65736A] z-10 font-medium">
-        In partnership with Urban Local Bodies (ULBs) & Recyclers across India.
+      <footer className="w-full max-w-4xl mx-auto px-6 pb-6 text-center text-[11px] text-[#60766C] z-10 font-medium">
+        EcoScan IN — Smart City Circular Economy Infrastructure for Urban Local Bodies & Recyclers across India.
       </footer>
     </div>
   );

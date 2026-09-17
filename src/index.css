@@ -193,12 +193,46 @@
   animation: ecoPulseGlow 20s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-eco-float-1,
-  .animate-eco-float-2,
-  .animate-eco-pulse {
-    animation: none !important;
-  }
+/* Glassmorphism & Card Utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(220, 229, 222, 0.8);
+}
+
+.glass-panel-dark {
+  background: rgba(23, 77, 53, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(63, 166, 107, 0.3);
+}
+
+.eco-card-hover {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.eco-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(23, 77, 53, 0.08), 0 8px 10px -6px rgba(23, 77, 53, 0.04);
+}
+
+@keyframes ecoPulseSlow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.animate-eco-pulse-slow {
+  animation: ecoPulseSlow 6s ease-in-out infinite;
+}
+
+@keyframes nodeFlow {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.animate-node-flow {
+  stroke-dasharray: 6 6;
+  animation: nodeFlow 2s linear infinite;
 }
 
 

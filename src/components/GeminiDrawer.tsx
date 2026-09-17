@@ -104,7 +104,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
         <button
           aria-label="Ask EcoAi Chatbot"
           onClick={onOpen}
-          className="h-12 px-4 rounded-full bg-[#3FA66B] text-[#FFFFFF] shadow-lg flex items-center gap-2 active:scale-95 transition-all hover:bg-[#174D35] border border-[#3FA66B]"
+          className="h-12 px-4 rounded-full bg-[#16A765] text-[#FFFFFF] shadow-lg flex items-center gap-2 active:scale-95 transition-all hover:bg-[#087A4B] border border-[#16A765]"
           type="button"
         >
           <span className="material-symbols-outlined text-[22px] animate-bounce">smart_toy</span>
@@ -115,23 +115,23 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
       {/* Drawer / Modal */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 bg-[#172019]/60 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4 transition-opacity animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-[#12352A]/60 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4 transition-opacity animate-in fade-in duration-200"
           onClick={onClose}
         >
           <div
-            className="w-full max-w-md bg-[#FFFFFF] text-[#172019] rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3 sm:gap-4 relative border border-[#DCE5DE] max-h-[85vh] sm:max-h-[85vh] h-[75dvh] sm:h-auto"
+            className="w-full max-w-md bg-[#FFFFFF] text-[#12352A] rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col gap-3 sm:gap-4 relative border border-[#D8EADF] max-h-[85vh] sm:max-h-[85vh] h-[75dvh] sm:h-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-[#DCE5DE] shrink-0">
+            <div className="flex items-center justify-between pb-2 border-b border-[#D8EADF] shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-full bg-[#E8F3EB] border border-[#DCE5DE] text-[#3FA66B] flex items-center justify-center shadow-xs">
+                <div className="w-10 h-10 rounded-full bg-[#E8F8EE] border border-[#D8EADF] text-[#16A765] flex items-center justify-center shadow-xs">
                   <span className="material-symbols-outlined text-[24px]">smart_toy</span>
                 </div>
                 <div>
-                  <h4 className="font-editorial italic text-base font-bold text-[#172019]">EcoAi Chatbot</h4>
-                  <span className="text-xs text-[#174D35] font-medium flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#3FA66B] animate-pulse"></span>
+                  <h4 className="font-editorial italic text-base font-bold text-[#12352A]">EcoAi Chatbot</h4>
+                  <span className="text-xs text-[#087A4B] font-medium flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#16A765] animate-pulse"></span>
                     Your Personal Environmental Assistant
                   </span>
                 </div>
@@ -139,7 +139,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
               <button
                 aria-label="Close Assistant"
                 onClick={onClose}
-                className="w-8 h-8 rounded-full bg-[#F5F8F4] border border-[#DCE5DE] flex items-center justify-center text-[#65736A] hover:text-[#172019] hover:bg-[#E8F3EB] transition-colors"
+                className="w-8 h-8 rounded-full bg-[#F7FCF8] border border-[#D8EADF] flex items-center justify-center text-[#60766C] hover:text-[#12352A] hover:bg-[#E8F8EE] transition-colors"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[20px]">close</span>
@@ -153,16 +153,16 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
                   key={m.id}
                   className={`p-3 rounded-xl text-sm ${
                     m.sender === 'ecoai'
-                      ? 'bg-[#E8F3EB] text-[#172019] border border-[#DCE5DE] leading-relaxed'
-                      : 'bg-[#3FA66B] text-[#FFFFFF] font-semibold ml-8 self-end'
+                      ? 'bg-[#E8F8EE] text-[#12352A] border border-[#D8EADF] leading-relaxed'
+                      : 'bg-[#16A765] text-[#FFFFFF] font-semibold ml-8 self-end'
                   }`}
                 >
                   {m.id === 'm-1' ? t('ecoAiGreeting') : m.text}
                 </div>
               ))}
               {isTyping && (
-                <div className="flex items-center gap-1.5 bg-[#E8F3EB] border border-[#DCE5DE] p-3 rounded-xl w-fit text-xs text-[#174D35]">
-                  <span className="w-2 h-2 rounded-full bg-[#3FA66B] animate-ping"></span>
+                <div className="flex items-center gap-1.5 bg-[#E8F8EE] border border-[#D8EADF] p-3 rounded-xl w-fit text-xs text-[#087A4B]">
+                  <span className="w-2 h-2 rounded-full bg-[#16A765] animate-ping"></span>
                   EcoAi is analyzing waste regulations & scrap market...
                 </div>
               )}
@@ -171,7 +171,7 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
 
             {/* Quick Inquiry Suggestions */}
             <div className="flex flex-col gap-1.5 shrink-0">
-              <span className="text-[10px] uppercase tracking-wider text-[#65736A] font-bold">
+              <span className="text-[10px] uppercase tracking-wider text-[#60766C] font-bold">
                 Quick Inquiries for EcoAi:
               </span>
               <div className="flex flex-col gap-1">
@@ -179,11 +179,11 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
                   <button
                     key={idx}
                     onClick={() => handleSend(q)}
-                    className="text-left px-3 py-1.5 rounded-lg bg-[#F5F8F4] hover:bg-[#E8F3EB] text-[#172019] text-xs transition-colors flex items-center justify-between border border-[#DCE5DE]"
+                    className="text-left px-3 py-1.5 rounded-lg bg-[#F7FCF8] hover:bg-[#E8F8EE] text-[#12352A] text-xs transition-colors flex items-center justify-between border border-[#D8EADF]"
                     type="button"
                   >
                     <span className="truncate pr-2">{q}</span>
-                    <span className="material-symbols-outlined text-[#3FA66B] text-[15px] shrink-0">
+                    <span className="material-symbols-outlined text-[#16A765] text-[15px] shrink-0">
                       north_east
                     </span>
                   </button>
@@ -199,13 +199,13 @@ export const GeminiDrawer: React.FC<GeminiDrawerProps> = ({
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Ask EcoAi anything about waste, scrap rates..."
-                className="flex-1 h-11 px-3.5 rounded-xl bg-[#FFFFFF] text-[#172019] text-sm placeholder:text-[#65736A] focus:outline-none focus:ring-2 focus:ring-[#3FA66B] border border-[#DCE5DE]"
+                className="flex-1 h-11 px-3.5 rounded-xl bg-[#FFFFFF] text-[#12352A] text-sm placeholder:text-[#60766C] focus:outline-none focus:ring-2 focus:ring-[#16A765] border border-[#D8EADF]"
                 type="text"
               />
               <button
                 aria-label="Send Query to EcoAi"
                 onClick={() => handleSend()}
-                className="w-11 h-11 rounded-xl bg-[#3FA66B] text-[#FFFFFF] flex items-center justify-center shadow-md hover:bg-[#174D35] active:scale-95 transition-all cursor-pointer"
+                className="w-11 h-11 rounded-xl bg-[#16A765] text-[#FFFFFF] flex items-center justify-center shadow-md hover:bg-[#087A4B] active:scale-95 transition-all cursor-pointer"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[20px] font-bold">send</span>

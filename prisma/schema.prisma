@@ -34,6 +34,7 @@ model User {
   ratingsGiven         PickupRating[]    @relation("UserRatings")
   collectorProfile     Collector?
   sessions             UserSession[]
+  achievements         UserAchievement[]
 }
 
 model Address {
@@ -316,3 +317,27 @@ model PickupRating {
   review               String?
   createdAt            DateTime          @default(now())
 }
+
+model PointRule {
+  id                   String            @id @default(cuid())
+  category             String            @unique // Dry Recyclables, Plastic, Paper, Metal, E-waste, Glass
+  pointsPerKg          Int               @default(10)
+  minWeightKg          Float             @default(0.5)
+  active               Boolean           @default(true)
+  updatedAt            DateTime          @updatedAt
+}
+
+model UserAchievement {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeKey             String            // e.g., FIRST_PICKUP, ECO_WARRIOR_50KG, CENTURION_CREDITS
+  title                String
+  description          String
+  icon                 String            @default("🏆")
+  bonusCredits         Int               @default(0)
+  unlockedAt           DateTime          @default(now())
+
+  @@unique([userId, badgeKey])
+}
+

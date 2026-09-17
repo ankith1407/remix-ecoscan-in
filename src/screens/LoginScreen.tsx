@@ -64,12 +64,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F8F4] text-[#172019] flex flex-col justify-between selection:bg-[#3FA66B] selection:text-[#FFFFFF] px-4 py-6">
+    <div className="min-h-screen bg-[#F7FCF8] text-[#12352A] flex flex-col justify-between selection:bg-[#16A765] selection:text-[#FFFFFF] px-4 py-6">
       {/* Top Header */}
       <div className="w-full max-w-md mx-auto flex items-center justify-between pb-4">
         <button
           onClick={onBackToWelcome}
-          className="w-9 h-9 rounded-full bg-[#FFFFFF] border border-[#DCE5DE] flex items-center justify-center text-[#65736A] hover:text-[#172019] transition-colors shadow-xs"
+          className="w-9 h-9 rounded-full bg-[#FFFFFF] border border-[#D8EADF] flex items-center justify-center text-[#60766C] hover:text-[#12352A] transition-colors shadow-xs cursor-pointer"
           type="button"
           aria-label="Back to welcome"
         >
@@ -77,10 +77,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </button>
 
         <div className="flex items-center gap-1.5">
-          <div className="w-7 h-7 rounded-lg bg-[#E8F3EB] border border-[#DCE5DE] flex items-center justify-center text-[#3FA66B]">
+          <div className="w-7 h-7 rounded-lg bg-[#E8F8EE] border border-[#D8EADF] flex items-center justify-center text-[#16A765]">
             <span className="material-symbols-outlined text-[16px]">recycling</span>
           </div>
-          <span className="font-editorial italic font-bold text-base text-[#172019]">EcoScan IN</span>
+          <span className="font-editorial italic font-bold text-base text-[#12352A]">EcoScan IN</span>
         </div>
 
         <LanguageSelector />
@@ -88,33 +88,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       {/* Main Form Container */}
       <div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-center my-4">
-        <div className="bg-[#FFFFFF] rounded-3xl p-6 sm:p-7 border border-[#DCE5DE] shadow-xl relative">
+        <div className="bg-[#FFFFFF] rounded-3xl p-6 sm:p-7 border border-[#D8EADF] shadow-xl relative">
           {/* Decorative badge */}
           <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] uppercase font-bold tracking-widest text-[#174D35] bg-[#E8F3EB] px-2.5 py-1 rounded-full border border-[#DCE5DE]">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#087A4B] bg-[#E8F8EE] px-2.5 py-1 rounded-full border border-[#D8EADF]">
               {t('citizen')}
             </span>
-            <span className="text-xs text-[#65736A]">{t('profile')}</span>
+            <span className="text-xs text-[#60766C]">{t('profile')}</span>
           </div>
 
-          <h2 className="font-editorial italic text-2xl font-bold text-[#172019] tracking-tight mb-1">
+          <h2 className="font-editorial italic text-2xl font-bold text-[#12352A] tracking-tight mb-1">
             {t('welcomeBack')}
           </h2>
-          <p className="text-xs text-[#65736A] mb-5">
+          <p className="text-xs text-[#60766C] mb-5">
             Sign in to track your green credits, scrap collections, and certificates.
           </p>
 
           {/* Login Method Toggle: Password vs OTP */}
-          <div className="grid grid-cols-2 gap-1 p-1 bg-[#F5F8F4] rounded-xl border border-[#DCE5DE] mb-5">
+          <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7FCF8] rounded-xl border border-[#D8EADF] mb-5">
             <button
               onClick={() => {
                 setLoginMethod('password');
                 setErrorMessage('');
               }}
-              className={`py-2 text-xs font-bold rounded-lg transition-all ${
+              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 loginMethod === 'password'
-                  ? 'bg-[#3FA66B] text-[#FFFFFF] shadow-xs'
-                  : 'text-[#65736A] hover:text-[#172019]'
+                  ? 'bg-gradient-to-r from-[#16A765] to-[#45C96B] text-[#FFFFFF] shadow-xs'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
               type="button"
             >
@@ -125,10 +125,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 setLoginMethod('otp');
                 setErrorMessage('');
               }}
-              className={`py-2 text-xs font-bold rounded-lg transition-all ${
+              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 loginMethod === 'otp'
-                  ? 'bg-[#3FA66B] text-[#FFFFFF] shadow-xs'
-                  : 'text-[#65736A] hover:text-[#172019]'
+                  ? 'bg-gradient-to-r from-[#16A765] to-[#45C96B] text-[#FFFFFF] shadow-xs'
+                  : 'text-[#60766C] hover:text-[#12352A]'
               }`}
               type="button"
             >
@@ -148,12 +148,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Identifier (Email / Phone) */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-[#172019] flex items-center justify-between">
+              <label className="text-xs font-semibold text-[#12352A] flex items-center justify-between">
                 <span>{t('emailMobile')}</span>
-                <span className="text-[10px] text-[#65736A] font-normal">e.g. aditi@gmail.com</span>
+                <span className="text-[10px] text-[#60766C] font-normal">e.g. aditi@gmail.com</span>
               </label>
               <div className="relative flex items-center">
-                <span className="material-symbols-outlined absolute left-3.5 text-[#65736A] text-[18px]">
+                <span className="material-symbols-outlined absolute left-3.5 text-[#60766C] text-[18px]">
                   person
                 </span>
                 <input
@@ -161,7 +161,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   placeholder={t('enterEmailMobile')}
-                  className="w-full h-11 pl-10 pr-4 bg-[#FFFFFF] text-[#172019] placeholder:text-[#65736A]/60 text-xs rounded-xl outline-none focus:ring-1 focus:ring-[#3FA66B] border border-[#DCE5DE]"
+                  className="w-full h-11 pl-10 pr-4 bg-[#FFFFFF] text-[#12352A] placeholder:text-[#60766C]/60 text-xs rounded-xl outline-none focus:ring-2 focus:ring-[#16A765]/20 focus:border-[#16A765] border border-[#D8EADF] transition-all"
                 />
               </div>
             </div>
@@ -170,20 +170,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {loginMethod === 'password' && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-[#172019]">{t('password')}</label>
+                  <label className="text-xs font-semibold text-[#12352A]">{t('password')}</label>
                   <button
                     type="button"
                     onClick={() => {
                       setLoginMethod('otp');
                       handleSendOtp();
                     }}
-                    className="text-[11px] text-[#3FA66B] font-bold hover:underline"
+                    className="text-[11px] text-[#16A765] font-bold hover:underline cursor-pointer"
                   >
                     {t('forgotUseOtp')}
                   </button>
                 </div>
                 <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3.5 text-[#65736A] text-[18px]">
+                  <span className="material-symbols-outlined absolute left-3.5 text-[#60766C] text-[18px]">
                     lock
                   </span>
                   <input
@@ -191,12 +191,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t('enterPassword')}
-                    className="w-full h-11 pl-10 pr-10 bg-[#FFFFFF] text-[#172019] placeholder:text-[#65736A]/60 text-xs rounded-xl outline-none focus:ring-1 focus:ring-[#3FA66B] border border-[#DCE5DE]"
+                    className="w-full h-11 pl-10 pr-10 bg-[#FFFFFF] text-[#12352A] placeholder:text-[#60766C]/60 text-xs rounded-xl outline-none focus:ring-2 focus:ring-[#16A765]/20 focus:border-[#16A765] border border-[#D8EADF] transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 text-[#65736A] hover:text-[#172019]"
+                    className="absolute right-3 text-[#60766C] hover:text-[#12352A] cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[18px]">
                       {showPassword ? 'visibility_off' : 'visibility'}
@@ -210,12 +210,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {loginMethod === 'otp' && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[#172019]">{t('verificationCode')}</span>
+                  <span className="text-xs font-semibold text-[#12352A]">{t('verificationCode')}</span>
                   {!otpSent ? (
                     <button
                       type="button"
                       onClick={handleSendOtp}
-                      className="text-xs font-bold text-[#3FA66B] hover:underline flex items-center gap-1"
+                      className="text-xs font-bold text-[#16A765] hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[15px]">send_to_mobile</span>
                       <span>{t('sendOtp')}</span>
@@ -224,7 +224,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <button
                       type="button"
                       onClick={handleSendOtp}
-                      className="text-[11px] text-[#65736A] hover:text-[#3FA66B]"
+                      className="text-[11px] text-[#60766C] hover:text-[#16A765] cursor-pointer"
                     >
                       {t('resendOtp')}
                     </button>
@@ -233,28 +233,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Simulated SMS banner if OTP sent */}
                 {otpSent && simulatedOtp && (
-                  <div className="p-3 rounded-xl bg-[#E8F3EB] border border-[#DCE5DE] flex flex-col gap-1.5 animate-in fade-in">
+                  <div className="p-3 rounded-xl bg-[#E8F8EE] border border-[#D8EADF] flex flex-col gap-1.5 animate-in fade-in">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-[#174D35] font-bold flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[14px] text-[#3FA66B]">sms</span>
+                      <span className="text-[10px] text-[#087A4B] font-bold flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px] text-[#16A765]">sms</span>
                         SMS Sent to {identifier}
                       </span>
                       <button
                         type="button"
                         onClick={() => setOtpCode(simulatedOtp)}
-                        className="text-[10px] bg-[#3FA66B] text-[#FFFFFF] px-2 py-0.5 rounded font-bold hover:bg-[#174D35]"
+                        className="text-[10px] bg-[#16A765] text-[#FFFFFF] px-2 py-0.5 rounded font-bold hover:bg-[#087A4B] cursor-pointer"
                       >
                         Auto-fill ({simulatedOtp})
                       </button>
                     </div>
-                    <p className="text-[11px] text-[#172019]">
-                      Your 6-digit EcoScan login OTP is <strong className="text-[#3FA66B] tracking-widest">{simulatedOtp}</strong>
+                    <p className="text-[11px] text-[#12352A]">
+                      Your 6-digit EcoScan login OTP is <strong className="text-[#16A765] tracking-widest">{simulatedOtp}</strong>
                     </p>
                   </div>
                 )}
 
                 <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3.5 text-[#65736A] text-[18px]">
+                  <span className="material-symbols-outlined absolute left-3.5 text-[#60766C] text-[18px]">
                     pin
                   </span>
                   <input
@@ -263,7 +263,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                     placeholder="Enter 6-digit OTP"
-                    className="w-full h-11 pl-10 pr-4 bg-[#FFFFFF] text-[#172019] placeholder:text-[#65736A]/60 text-sm font-code-metric tracking-widest rounded-xl outline-none focus:ring-1 focus:ring-[#3FA66B] border border-[#DCE5DE]"
+                    className="w-full h-11 pl-10 pr-4 bg-[#FFFFFF] text-[#12352A] placeholder:text-[#60766C]/60 text-sm font-code-metric tracking-widest rounded-xl outline-none focus:ring-2 focus:ring-[#16A765]/20 focus:border-[#16A765] border border-[#D8EADF] transition-all"
                   />
                 </div>
               </div>
@@ -272,22 +272,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full h-12 rounded-xl bg-[#3FA66B] hover:bg-[#174D35] text-[#FFFFFF] font-bold text-sm shadow-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-[#16A765] to-[#45C96B] hover:opacity-95 text-[#FFFFFF] font-bold text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
             >
               <span>{t('signIn')}</span>
               <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
             </button>
           </form>
-
         </div>
 
         {/* Switch to Register link */}
         <div className="mt-6 text-center">
-          <p className="text-xs text-[#65736A]">
+          <p className="text-xs text-[#60766C]">
             New to EcoScan IN?{' '}
             <button
               onClick={onNavigateToRegister}
-              className="text-[#3FA66B] font-bold hover:underline ml-1"
+              className="text-[#16A765] font-bold hover:underline ml-1 cursor-pointer"
               type="button"
             >
               Create New Account
@@ -297,7 +296,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       </div>
 
       {/* Footer */}
-      <div className="w-full max-w-md mx-auto text-center text-[11px] text-[#65736A]">
+      <div className="w-full max-w-md mx-auto text-center text-[11px] text-[#60766C]">
         Protected under Swachh Bharat Mission (Urban 2.0) Civic Data Privacy Norms.
       </div>
     </div>
